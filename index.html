@@ -262,6 +262,7 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 <button class="btn" id="btn-salvar-pdf-drive" style="background:#2f6fb0;color:#fff" onclick="salvarPdfNoDrive()">☁ Salvar PDF no Drive</button>
 </div>
 <div id="area-impressao"></div>
+<div id="area-impressao-auto" style="position:fixed;top:0;left:-9999px;width:800px;background:#fff"></div>
 </div>
 
 </div>
@@ -1230,7 +1231,46 @@ if(idx>=0){
 }
 salvar();
 document.getElementById('nd-numero').value=rascunho.numero;
-alert('Diário nº '+rascunho.numero+' salvo com sucesso!');
+var salvarInd=document.getElementById('save-ind');
+if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){
+  alert('Diário nº '+rascunho.numero+' salvo com sucesso!');
+  return;
+}
+if(salvarInd){salvarInd.textContent='enviando PDF pro Drive...';salvarInd.style.color='var(--gold)';}
+_salvarPdfDriveAutomatico(function(ano,mesPasta){
+  if(salvarInd){salvarInd.textContent='salvo + PDF no Drive';salvarInd.style.color='var(--green2)';}
+  alert('Diário nº '+rascunho.numero+' salvo com sucesso, e o PDF já subiu pro Drive (pasta: '+ano+' / '+mesPasta+')!');
+},function(msg){
+  if(salvarInd){salvarInd.textContent='salvo (PDF falhou)';salvarInd.style.color='var(--gold)';}
+  alert('Diário nº '+rascunho.numero+' salvo com sucesso!\n\nMas não consegui subir o PDF pro Drive agora: '+msg+'\nVocê pode tentar de novo pela tela de Visualizar/Imprimir.');
+});
+}
+function _salvarPdfDriveAutomatico(onSucesso,onErro){
+var container=document.getElementById('area-impressao-auto');
+container.innerHTML=gerarHtmlDiario(rascunho);
+var conteudo=container.firstElementChild;
+if(!conteudo){if(onErro)onErro('não foi possível montar o relatório');return;}
+function prosseguir(){
+  _gerarEEnviarPdf(conteudo,rascunho,function(ano,mesPasta,nomeArquivo){
+    container.innerHTML='';
+    if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo);
+  },function(msg){
+    container.innerHTML='';
+    if(onErro)onErro(msg);
+  });
+}
+if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){container.innerHTML='';if(onErro)onErro('Drive não configurado');return;}
+if(!_tokenClientDrive){inicializarGoogleAuthDrive();}
+if(_accessTokenDrive){
+  prosseguir();
+}else if(_tokenClientDrive){
+  _pendingAuthCallback=prosseguir;
+  _pendingAuthErro=function(msg){container.innerHTML='';if(onErro)onErro(msg);};
+  _tokenClientDrive.requestAccessToken({prompt:'select_account'});
+}else{
+  container.innerHTML='';
+  if(onErro)onErro('autenticação do Google ainda carregando, tenta salvar de novo em alguns segundos');
+}
 }
 
 // ================== HISTÓRICO ==================
@@ -1298,12 +1338,14 @@ document.getElementById('content-visualizar').style.display='none';
 document.getElementById('content-historico').style.display='block';
 }
 // ================== SALVAR PDF NO GOOGLE DRIVE (Ano/Mês) ==================
-var GOOGLE_CLIENT_ID='SEU_CLIENT_ID_AQUI.apps.googleusercontent.com';
+var GOOGLE_CLIENT_ID='696471423528-t52eeunbr05qgu8e33u7ochvoda9ur93.apps.googleusercontent.com';
 var DRIVE_SCOPE='https://www.googleapis.com/auth/drive.file';
 var _tokenClientDrive=null;
 var _accessTokenDrive=null;
 var _nomesMeses=['','01 - Janeiro','02 - Fevereiro','03 - Março','04 - Abril','05 - Maio','06 - Junho','07 - Julho','08 - Agosto','09 - Setembro','10 - Outubro','11 - Novembro','12 - Dezembro'];
 
+var _pendingAuthCallback=null;
+var _pendingAuthErro=null;
 function inicializarGoogleAuthDrive(){
 if(typeof google==='undefined'||!google.accounts||GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0)return;
 _tokenClientDrive=google.accounts.oauth2.initTokenClient({
@@ -1312,10 +1354,11 @@ _tokenClientDrive=google.accounts.oauth2.initTokenClient({
   callback:function(resp){
     if(resp&&resp.access_token){
       _accessTokenDrive=resp.access_token;
-      _continuarSalvarPdfDrive();
+      if(_pendingAuthCallback){var cb=_pendingAuthCallback;_pendingAuthCallback=null;_pendingAuthErro=null;cb();}
+      else _continuarSalvarPdfDrive();
     }else{
-      _resetarBotaoPdfDrive();
-      alert('Não foi possível autorizar o acesso ao Google Drive.');
+      if(_pendingAuthErro){var errCb=_pendingAuthErro;_pendingAuthCallback=null;_pendingAuthErro=null;errCb('autorização do Google Drive não concedida');}
+      else{_resetarBotaoPdfDrive();alert('Não foi possível autorizar o acesso ao Google Drive.');}
     }
   }
 });
@@ -1330,7 +1373,7 @@ if(btn){btn.disabled=true;btn.textContent='Autorizando...';}
 if(_accessTokenDrive){
   _continuarSalvarPdfDrive();
 }else{
-  _tokenClientDrive.requestAccessToken();
+  _tokenClientDrive.requestAccessToken({prompt:'select_account'});
 }
 }
 function _resetarBotaoPdfDrive(){
@@ -1340,8 +1383,18 @@ if(btn){btn.disabled=false;btn.textContent='☁ Salvar PDF no Drive';}
 function _continuarSalvarPdfDrive(){
 var conteudo=document.getElementById('area-impressao').firstElementChild;
 if(!conteudo){alert('Abra a visualização do diário primeiro (botão Visualizar/Imprimir).');_resetarBotaoPdfDrive();return;}
+var diarioRef=_diarioVisualizandoId?(DIARIOS.find(function(d){return d.id===_diarioVisualizandoId;})||rascunho):rascunho;
 var btn=document.getElementById('btn-salvar-pdf-drive');
 if(btn){btn.disabled=true;btn.textContent='Gerando PDF...';}
+_gerarEEnviarPdf(conteudo,diarioRef,function(ano,mesPasta){
+  _resetarBotaoPdfDrive();
+  alert('PDF salvo no Drive! (pasta: '+ano+' / '+mesPasta+')');
+},function(msg){
+  _resetarBotaoPdfDrive();
+  alert(msg);
+});
+}
+function _gerarEEnviarPdf(conteudo,diarioRef,onSucesso,onErro){
 var transformOriginal=conteudo.style.transform;
 conteudo.style.transform='none';
 html2canvas(conteudo,{scale:2,useCORS:true,backgroundColor:'#ffffff'}).then(function(canvas){
@@ -1357,19 +1410,17 @@ html2canvas(conteudo,{scale:2,useCORS:true,backgroundColor:'#ffffff'}).then(func
   pdf.addImage(imgData,'JPEG',x,0,imgWidth,imgHeight);
   var pdfBlob=pdf.output('blob');
 
-  var dataRef=(_diarioVisualizandoId?(DIARIOS.find(function(d){return d.id===_diarioVisualizandoId;})||rascunho):rascunho).data||hoje();
-  var numeroRef=(_diarioVisualizandoId?(DIARIOS.find(function(d){return d.id===_diarioVisualizandoId;})||rascunho):rascunho).numero;
+  var dataRef=diarioRef.data||hoje();
+  var numeroRef=diarioRef.numero;
   if(numeroRef==null)numeroRef=calcularDias(dataRef).numero;
   var partes=dataRef.split('-');
   var ano=partes[0];
   var mesPasta=_nomesMeses[parseInt(partes[1],10)]||partes[1];
   var nomeArquivo='Diario_'+numeroRef+'_'+dataRef+'.pdf';
-  if(btn)btn.textContent='Enviando pro Drive...';
-  _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo);
+  _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,onSucesso,onErro);
 }).catch(function(e){
   conteudo.style.transform=transformOriginal;
-  _resetarBotaoPdfDrive();
-  alert('Erro ao gerar o PDF: '+e.message);
+  if(onErro)onErro('Erro ao gerar o PDF: '+e.message);
 });
 }
 function _driveApiFetch(url,opts){
@@ -1395,7 +1446,7 @@ return _driveApiFetch(url).then(function(data){
   }).then(function(novo){return novo.id;});
 });
 }
-function _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo){
+function _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,onSucesso,onErro){
 _encontrarOuCriarPastaDrive('Diarios PDF - Top do Alto',null).then(function(raizId){
   return _encontrarOuCriarPastaDrive(ano,raizId);
 }).then(function(anoId){
@@ -1412,11 +1463,9 @@ _encontrarOuCriarPastaDrive('Diarios PDF - Top do Alto',null).then(function(raiz
   });
 }).then(function(resp){
   if(!resp.ok)throw new Error('Falha ao enviar pro Drive (HTTP '+resp.status+')');
-  _resetarBotaoPdfDrive();
-  alert('PDF salvo no Drive! (pasta: '+ano+' / mês correspondente)');
+  if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo);
 }).catch(function(e){
-  _resetarBotaoPdfDrive();
-  alert('Erro ao salvar no Drive: '+e.message);
+  if(onErro)onErro('Erro ao salvar no Drive: '+e.message);
 });
 }
 
