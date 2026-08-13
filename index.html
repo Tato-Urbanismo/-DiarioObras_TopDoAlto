@@ -628,15 +628,17 @@ reader.onload=function(e){
 reader.readAsDataURL(input.files[0]);
 }
 function carregar(){
-db.collection('obra').doc('config').get().then(function(cdoc){
-  if(cdoc.exists)CONFIG=Object.assign(CONFIG,cdoc.data());
-  db.collection('diarios').doc('lista').get().then(function(ddoc){
-    if(ddoc.exists&&ddoc.data().itens)DIARIOS=ddoc.data().itens;
-    db.collection('obra').doc('rascunho').get().then(function(rdoc){
-      if(rdoc.exists&&rdoc.data()&&rdoc.data().data===hoje())rascunho=rdoc.data();
-      finalizarCarregamento('online');
-    }).catch(function(){finalizarCarregamento('online');});
-  }).catch(function(){finalizarCarregamento('online');});
+Promise.all([
+  db.collection('obra').doc('config').get().catch(function(){return null;}),
+  db.collection('diarios').doc('lista').get().catch(function(){return null;}),
+  db.collection('obra').doc('rascunho').get().catch(function(){return null;})
+]).then(function(resultados){
+  var cdoc=resultados[0],ddoc=resultados[1],rdoc=resultados[2];
+  if(!cdoc&&!ddoc&&!rdoc){carregarLocal();return;}
+  if(cdoc&&cdoc.exists)CONFIG=Object.assign(CONFIG,cdoc.data());
+  if(ddoc&&ddoc.exists&&ddoc.data().itens)DIARIOS=ddoc.data().itens;
+  if(rdoc&&rdoc.exists&&rdoc.data()&&rdoc.data().data===hoje())rascunho=rdoc.data();
+  finalizarCarregamento('online');
 }).catch(function(){carregarLocal();});
 }
 function carregarLocal(){
