@@ -469,13 +469,40 @@ function fecharModal(id){document.getElementById(id).style.display='none';}
 function abrirModal(id){document.getElementById(id).style.display='flex';}
 
 // ================== PERSISTÊNCIA ==================
+var _cargaInicialOk=false;
 function salvar(){
 try{localStorage.setItem(STORAGE_KEY,JSON.stringify({config:CONFIG,diarios:DIARIOS,rascunho:rascunho}));}catch(e){}
 db.collection('obra').doc('config').set(CONFIG).catch(function(){});
 db.collection('obra').doc('rascunho').set(rascunho).catch(function(){});
-db.collection('diarios').doc('lista').set({itens:DIARIOS,ts:new Date().toISOString()})
-.then(function(){var el=document.getElementById('save-ind');if(el){el.textContent='sincronizado';el.style.color='var(--green2)';}})
-.catch(function(){var el=document.getElementById('save-ind');if(el){el.textContent='salvo local';el.style.color='var(--gold)';}});
+if(DIARIOS.length===0&&!_cargaInicialOk){
+  var elAviso=document.getElementById('save-ind');
+  if(elAviso){elAviso.textContent='aguardando carregar diários...';elAviso.style.color='var(--gold)';}
+}else{
+  var diariosLeves=DIARIOS.map(function(d){
+    var copia=JSON.parse(JSON.stringify(d));
+    if(copia.fotos&&copia.fotos.length){
+      copia.fotos=copia.fotos.map(function(f){return {legenda:f.legenda||'',temFoto:true};});
+    }
+    return copia;
+  });
+  db.collection('diarios').doc('lista').set({itens:diariosLeves,ts:new Date().toISOString()})
+  .then(function(){var el=document.getElementById('save-ind');if(el){el.textContent='sincronizado';el.style.color='var(--green2)';}})
+  .catch(function(){var el=document.getElementById('save-ind');if(el){el.textContent='salvo local';el.style.color='var(--gold)';}});
+  DIARIOS.forEach(function(d){
+    if(d.fotos&&d.fotos.length&&d.fotos[0].dataUrl){
+      db.collection('fotos_diarios').doc(d.id).set({fotos:d.fotos}).catch(function(){});
+    }
+  });
+}
+}
+function _carregarFotosDiario(diarioId,callback){
+var d=DIARIOS.find(function(x){return x.id===diarioId;});
+if(!d){callback();return;}
+if(!d.fotos||!d.fotos.length||d.fotos[0].dataUrl){callback();return;}
+db.collection('fotos_diarios').doc(diarioId).get().then(function(doc){
+  if(doc.exists&&doc.data().fotos)d.fotos=doc.data().fotos;
+  callback();
+}).catch(function(){callback();});
 }
 function salvarConfig(){
 CONFIG.nome=document.getElementById('cf-nome').value.trim()||'LOTEAMENTO TOP DO ALTO';
@@ -625,12 +652,13 @@ try{
 finalizarCarregamento('offline');
 }
 function finalizarCarregamento(status){
+_cargaInicialOk=true;
 var el=document.getElementById('save-ind');
 if(el){el.textContent=status;el.style.color=status==='online'?'var(--green2)':'var(--gold)';}
 if(!rascunho||rascunho.data!==hoje())rascunho=criarRascunhoVazio();
 aplicarModelo();
 preencherFormRascunho();
-atualizarCalculosData();
+atualizarCalculosData(true);
 }
 
 // ================== RASCUNHO / FORMULÁRIO DE HOJE ==================
@@ -666,8 +694,8 @@ var trabalhados=CONFIG.dataInicial?diffDias(CONFIG.dataInicial,dataRef||hoje()):
 var restantes=prazo-trabalhados;
 return {prazo:prazo,trabalhados:trabalhados,restantes:restantes,numero:trabalhados};
 }
-function atualizarCalculosData(){
-salvarRascunho();
+function atualizarCalculosData(semSalvar){
+if(!semSalvar)salvarRascunho();
 var dataRef=document.getElementById('nd-data').value||hoje();
 var c=calcularDias(dataRef);
 document.getElementById('nd-numero').value=c.numero;
@@ -1312,11 +1340,13 @@ return '<tr><td style="font-weight:700">'+d.numero+'</td><td>'+fmtData(d.data)+'
 function editarDiarioHistorico(id){
 var d=DIARIOS.find(function(x){return x.id===id;});
 if(!d)return;
-rascunho=JSON.parse(JSON.stringify(d));
-mudarAba('novo',document.querySelector('nav button'));
-preencherFormRascunho();
-atualizarCalculosData();
-window.scrollTo(0,0);
+_carregarFotosDiario(id,function(){
+  rascunho=JSON.parse(JSON.stringify(d));
+  mudarAba('novo',document.querySelector('nav button'));
+  preencherFormRascunho();
+  atualizarCalculosData();
+  window.scrollTo(0,0);
+});
 }
 function excluirDiario(id){
 var d=DIARIOS.find(function(x){return x.id===id;});
@@ -1342,12 +1372,14 @@ function visualizarDiario(id){
 var d=DIARIOS.find(function(x){return x.id===id;});
 if(!d)return;
 _diarioVisualizandoId=id;
-document.getElementById('area-impressao').innerHTML=gerarHtmlDiario(d);
-document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
-document.getElementById('panel-historico').classList.add('on');
-document.getElementById('content-historico').style.display='none';
-document.getElementById('content-visualizar').style.display='block';
-window.scrollTo(0,0);
+_carregarFotosDiario(id,function(){
+  document.getElementById('area-impressao').innerHTML=gerarHtmlDiario(d);
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+  document.getElementById('panel-historico').classList.add('on');
+  document.getElementById('content-historico').style.display='none';
+  document.getElementById('content-visualizar').style.display='block';
+  window.scrollTo(0,0);
+});
 }
 function fecharVisualizacao(){
 document.getElementById('content-visualizar').style.display='none';
