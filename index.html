@@ -99,9 +99,6 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 @media print{header,nav,.no-print{display:none!important}.panel{display:none!important;max-width:100%;padding:0}.panel.on{display:block!important}#area-impressao{display:flex;justify-content:center}}
 @media (max-width:640px){.gtable{font-size:calc(10px * var(--largura-c,1))}.gtable td,.gtable th{padding:calc(4px * var(--altura-l,1)) calc(5px * var(--largura-c,1))}}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <div id="tela-abertura" onclick="esconderTelaAbertura()" style="position:fixed;inset:0;z-index:9999;background:#0d1117;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .5s ease;cursor:pointer">
@@ -628,18 +625,26 @@ reader.onload=function(e){
 reader.readAsDataURL(input.files[0]);
 }
 function carregar(){
+var _t0=performance.now();
+var elInd=document.getElementById('save-ind');
+var _timerCarregando=setInterval(function(){
+  if(elInd)elInd.textContent='carregando... ('+((performance.now()-_t0)/1000).toFixed(1)+'s)';
+},300);
 Promise.all([
   db.collection('obra').doc('config').get().catch(function(){return null;}),
   db.collection('diarios').doc('lista').get().catch(function(){return null;}),
   db.collection('obra').doc('rascunho').get().catch(function(){return null;})
 ]).then(function(resultados){
+  clearInterval(_timerCarregando);
+  var _t1=performance.now();
+  console.log('[Diagnóstico] Firestore respondeu em '+((_t1-_t0)/1000).toFixed(2)+'s');
   var cdoc=resultados[0],ddoc=resultados[1],rdoc=resultados[2];
   if(!cdoc&&!ddoc&&!rdoc){carregarLocal();return;}
   if(cdoc&&cdoc.exists)CONFIG=Object.assign(CONFIG,cdoc.data());
   if(ddoc&&ddoc.exists&&ddoc.data().itens)DIARIOS=ddoc.data().itens;
   if(rdoc&&rdoc.exists&&rdoc.data()&&rdoc.data().data===hoje())rascunho=rdoc.data();
-  finalizarCarregamento('online');
-}).catch(function(){carregarLocal();});
+  finalizarCarregamento('online ('+((performance.now()-_t0)/1000).toFixed(1)+'s)');
+}).catch(function(){clearInterval(_timerCarregando);carregarLocal();});
 }
 function carregarLocal(){
 try{
@@ -656,7 +661,7 @@ finalizarCarregamento('offline');
 function finalizarCarregamento(status){
 _cargaInicialOk=true;
 var el=document.getElementById('save-ind');
-if(el){el.textContent=status;el.style.color=status==='online'?'var(--green2)':'var(--gold)';}
+if(el){el.textContent=status;el.style.color=status.indexOf('online')===0?'var(--green2)':'var(--gold)';}
 if(!rascunho||rascunho.data!==hoje())rascunho=criarRascunhoVazio();
 aplicarModelo();
 preencherFormRascunho();
@@ -1275,6 +1280,13 @@ _salvarPdfDriveAutomatico(function(ano,mesPasta){
 });
 }
 function _salvarPdfDriveAutomatico(onSucesso,onErro){
+_garantirLibsPdf(function(){
+_garantirLibGoogle(function(){
+_salvarPdfDriveAutomaticoInterno(onSucesso,onErro);
+});
+});
+}
+function _salvarPdfDriveAutomaticoInterno(onSucesso,onErro){
 var painelAtivo=document.querySelector('.panel.on');
 var painelAtivoId=painelAtivo?painelAtivo.id:'panel-novo';
 document.getElementById('area-impressao').innerHTML=gerarHtmlDiario(rascunho);
@@ -1394,6 +1406,47 @@ var _tokenClientDrive=null;
 var _accessTokenDrive=null;
 var _nomesMeses=['','01 - Janeiro','02 - Fevereiro','03 - Março','04 - Abril','05 - Maio','06 - Junho','07 - Julho','08 - Agosto','09 - Setembro','10 - Outubro','11 - Novembro','12 - Dezembro'];
 
+// ================== CARREGAMENTO SOB DEMANDA (só quando precisar de PDF/Drive) ==================
+var _libsPdfProntas=false;
+var _libsPdfCarregando=false;
+var _libsPdfFilaCallbacks=[];
+function _garantirLibsPdf(callback){
+if(_libsPdfProntas){callback();return;}
+_libsPdfFilaCallbacks.push(callback);
+if(_libsPdfCarregando)return;
+_libsPdfCarregando=true;
+function carregarScript(src){
+  return new Promise(function(resolve,reject){
+    var s=document.createElement('script');
+    s.src=src;
+    s.onload=resolve;
+    s.onerror=reject;
+    document.head.appendChild(s);
+  });
+}
+Promise.all([
+  carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+  carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+]).then(function(){
+  _libsPdfProntas=true;
+  _libsPdfFilaCallbacks.forEach(function(cb){cb();});
+  _libsPdfFilaCallbacks=[];
+}).catch(function(){
+  alert('Não consegui carregar as bibliotecas de PDF. Verifica sua conexão e tenta de novo.');
+  _libsPdfCarregando=false;
+  _libsPdfFilaCallbacks=[];
+});
+}
+var _libGoogleCarregada=false;
+function _garantirLibGoogle(callback){
+if(_libGoogleCarregada||typeof google!=='undefined'){callback();return;}
+var s=document.createElement('script');
+s.src='https://accounts.google.com/gsi/client';
+s.onload=function(){_libGoogleCarregada=true;inicializarGoogleAuthDrive();callback();};
+s.onerror=function(){alert('Não consegui carregar a autenticação do Google. Verifica sua conexão.');};
+document.head.appendChild(s);
+}
+
 var _pendingAuthCallback=null;
 var _pendingAuthErro=null;
 function inicializarGoogleAuthDrive(){
@@ -1413,18 +1466,22 @@ _tokenClientDrive=google.accounts.oauth2.initTokenClient({
   }
 });
 }
-window.addEventListener('load',function(){setTimeout(inicializarGoogleAuthDrive,500);});
 
 function salvarPdfNoDrive(){
 if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){alert('A conexão com o Google Drive ainda não foi configurada.');return;}
-if(!_tokenClientDrive){alert('Carregando autenticação do Google, tenta de novo em alguns segundos.');inicializarGoogleAuthDrive();return;}
 var btn=document.getElementById('btn-salvar-pdf-drive');
-if(btn){btn.disabled=true;btn.textContent='Autorizando...';}
+if(btn){btn.disabled=true;btn.textContent='Carregando...';}
+_garantirLibsPdf(function(){
+_garantirLibGoogle(function(){
+if(!_tokenClientDrive){if(btn){btn.disabled=false;btn.textContent='☁ Salvar PDF no Drive';}alert('Carregando autenticação do Google, tenta de novo em alguns segundos.');return;}
+if(btn)btn.textContent='Autorizando...';
 if(_accessTokenDrive){
   _continuarSalvarPdfDrive();
 }else{
   _tokenClientDrive.requestAccessToken({prompt:'select_account'});
 }
+});
+});
 }
 function _resetarBotaoPdfDrive(){
 var btn=document.getElementById('btn-salvar-pdf-drive');
