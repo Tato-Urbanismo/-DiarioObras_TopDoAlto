@@ -1261,15 +1261,19 @@ function restaurarTela(){
   document.getElementById('content-historico').style.display='block';
 }
 function prosseguir(){
-  setTimeout(function(){
-    _gerarEEnviarPdf(conteudo,rascunho,function(ano,mesPasta,nomeArquivo){
-      restaurarTela();
-      if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo);
-    },function(msg){
-      restaurarTela();
-      if(onErro)onErro(msg);
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      setTimeout(function(){
+        _gerarEEnviarPdf(conteudo,rascunho,function(ano,mesPasta,nomeArquivo){
+          restaurarTela();
+          if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo);
+        },function(msg){
+          restaurarTela();
+          if(onErro)onErro(msg);
+        });
+      },900);
     });
-  },250);
+  });
 }
 if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){restaurarTela();if(onErro)onErro('Drive não configurado');return;}
 if(!_tokenClientDrive){inicializarGoogleAuthDrive();}
