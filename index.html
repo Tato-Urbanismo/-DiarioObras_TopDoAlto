@@ -99,8 +99,8 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 @media print{header,nav,.no-print{display:none!important}.panel{display:none!important;max-width:100%;padding:0}.panel.on{display:block!important}#area-impressao{display:flex;justify-content:center}}
 @media (max-width:640px){.gtable{font-size:calc(10px * var(--largura-c,1))}.gtable td,.gtable th{padding:calc(4px * var(--altura-l,1)) calc(5px * var(--largura-c,1))}}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -1464,7 +1464,7 @@ return _driveApiFetch(url).then(function(data){
 });
 }
 function _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,onSucesso,onErro){
-_encontrarOuCriarPastaDrive('DIÁRIOS DE OBRA',null).then(function(raizId){
+_encontrarOuCriarPastaDrive('Diários de Obra - Top do Alto',null).then(function(raizId){
   return _encontrarOuCriarPastaDrive(ano,raizId);
 }).then(function(anoId){
   return _encontrarOuCriarPastaDrive(mesPasta,anoId);
