@@ -262,7 +262,6 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 <button class="btn" id="btn-salvar-pdf-drive" style="background:#2f6fb0;color:#fff" onclick="salvarPdfNoDrive()">☁ Salvar PDF no Drive</button>
 </div>
 <div id="area-impressao"></div>
-<div id="area-impressao-auto" style="position:absolute;top:0;left:0;width:800px;background:#fff;opacity:0;pointer-events:none;z-index:-1"></div>
 </div>
 
 </div>
@@ -1246,31 +1245,42 @@ _salvarPdfDriveAutomatico(function(ano,mesPasta){
 });
 }
 function _salvarPdfDriveAutomatico(onSucesso,onErro){
-var container=document.getElementById('area-impressao-auto');
-container.innerHTML=gerarHtmlDiario(rascunho);
-var conteudo=container.firstElementChild;
+var painelAtivo=document.querySelector('.panel.on');
+var painelAtivoId=painelAtivo?painelAtivo.id:'panel-novo';
+document.getElementById('area-impressao').innerHTML=gerarHtmlDiario(rascunho);
+var conteudo=document.getElementById('area-impressao').firstElementChild;
 if(!conteudo){if(onErro)onErro('não foi possível montar o relatório');return;}
+document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+document.getElementById('panel-historico').classList.add('on');
+document.getElementById('content-historico').style.display='none';
+document.getElementById('content-visualizar').style.display='block';
+function restaurarTela(){
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+  document.getElementById(painelAtivoId).classList.add('on');
+  document.getElementById('content-visualizar').style.display='none';
+  document.getElementById('content-historico').style.display='block';
+}
 function prosseguir(){
   setTimeout(function(){
     _gerarEEnviarPdf(conteudo,rascunho,function(ano,mesPasta,nomeArquivo){
-      container.innerHTML='';
+      restaurarTela();
       if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo);
     },function(msg){
-      container.innerHTML='';
+      restaurarTela();
       if(onErro)onErro(msg);
     });
-  },200);
+  },250);
 }
-if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){container.innerHTML='';if(onErro)onErro('Drive não configurado');return;}
+if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){restaurarTela();if(onErro)onErro('Drive não configurado');return;}
 if(!_tokenClientDrive){inicializarGoogleAuthDrive();}
 if(_accessTokenDrive){
   prosseguir();
 }else if(_tokenClientDrive){
   _pendingAuthCallback=prosseguir;
-  _pendingAuthErro=function(msg){container.innerHTML='';if(onErro)onErro(msg);};
+  _pendingAuthErro=function(msg){restaurarTela();if(onErro)onErro(msg);};
   _tokenClientDrive.requestAccessToken({prompt:'select_account'});
 }else{
-  container.innerHTML='';
+  restaurarTela();
   if(onErro)onErro('autenticação do Google ainda carregando, tenta salvar de novo em alguns segundos');
 }
 }
@@ -1450,7 +1460,7 @@ return _driveApiFetch(url).then(function(data){
 });
 }
 function _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,onSucesso,onErro){
-_encontrarOuCriarPastaDrive('Diarios PDF - Top do Alto',null).then(function(raizId){
+_encontrarOuCriarPastaDrive('DIÁRIOS DE OBRA',null).then(function(raizId){
   return _encontrarOuCriarPastaDrive(ano,raizId);
 }).then(function(anoId){
   return _encontrarOuCriarPastaDrive(mesPasta,anoId);
