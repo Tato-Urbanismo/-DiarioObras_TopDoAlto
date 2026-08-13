@@ -1463,8 +1463,9 @@ return _driveApiFetch(url).then(function(data){
   }).then(function(novo){return novo.id;});
 });
 }
+var PASTA_RAIZ_DRIVE_ID='13aK8A3eYPQEq1CsGPhHFTCRwxcbVj5Tu';
 function _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,onSucesso,onErro){
-_encontrarOuCriarPastaDrive('Diários de Obra - Top do Alto',null).then(function(raizId){
+Promise.resolve(PASTA_RAIZ_DRIVE_ID).then(function(raizId){
   return _encontrarOuCriarPastaDrive(ano,raizId);
 }).then(function(anoId){
   return _encontrarOuCriarPastaDrive(mesPasta,anoId);
