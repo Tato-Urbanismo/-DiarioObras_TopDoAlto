@@ -247,6 +247,10 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 <div class="form-linha-config-item"><label>Até</label><input type="date" id="h-data-ate" onchange="renderHistorico()"></div>
 </div>
 </div>
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+<button class="btn" id="btn-enviar-todos-drive" style="background:#2f6fb0;color:#fff" onclick="enviarTodosPdfDrive()">☁ Enviar Todos pro Drive</button>
+<span id="status-envio-massa" style="font-size:12px;color:#666"></span>
+</div>
 <div style="overflow-x:auto">
 <table class="gtable"><thead><tr><th>Nº</th><th>Data</th><th>Clima (Manhã)</th><th class="center">Mão de Obra</th><th class="center">Equipamentos</th><th class="center">Fotos</th><th>Responsável</th><th>Ações</th></tr></thead><tbody id="td-historico"></tbody></table>
 </div>
@@ -1463,6 +1467,89 @@ _tokenClientDrive=google.accounts.oauth2.initTokenClient({
       if(_pendingAuthErro){var errCb=_pendingAuthErro;_pendingAuthCallback=null;_pendingAuthErro=null;errCb('autorização do Google Drive não concedida');}
       else{_resetarBotaoPdfDrive();alert('Não foi possível autorizar o acesso ao Google Drive.');}
     }
+  }
+});
+}
+
+// ================== ENVIAR TODOS OS DIÁRIOS PRO DRIVE (em sequência) ==================
+var _envioMassaCancelado=false;
+function enviarTodosPdfDrive(){
+if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){alert('A conexão com o Google Drive ainda não foi configurada.');return;}
+var lista=DIARIOS.slice().sort(function(a,b){return (a.data||'').localeCompare(b.data||'');});
+if(!lista.length){alert('Não há diários salvos.');return;}
+if(!confirm('Isso vai gerar e enviar '+lista.length+' PDFs pro Google Drive, um de cada vez. Pode demorar vários minutos. Deseja continuar?'))return;
+_envioMassaCancelado=false;
+var btn=document.getElementById('btn-enviar-todos-drive');
+var status=document.getElementById('status-envio-massa');
+if(btn){btn.disabled=true;btn.textContent='Cancelar envio';btn.onclick=function(){_envioMassaCancelado=true;};}
+var sucesso=0, falha=0, falhasDetalhe=[];
+function processarProximo(i){
+  if(_envioMassaCancelado||i>=lista.length){
+    if(btn){btn.disabled=false;btn.textContent='☁ Enviar Todos pro Drive';btn.onclick=function(){enviarTodosPdfDrive();};}
+    if(status)status.textContent='';
+    var msg=(_envioMassaCancelado?'Envio cancelado. ':'Envio concluído! ')+sucesso+' enviados, '+falha+' falharam.';
+    if(falhasDetalhe.length)msg+='\n\nFalhas:\n'+falhasDetalhe.slice(0,15).join('\n');
+    alert(msg);
+    return;
+  }
+  var d=lista[i];
+  if(status)status.textContent='Enviando '+(i+1)+' de '+lista.length+': diário nº '+d.numero+' ('+fmtData(d.data)+')...';
+  _garantirLibsPdf(function(){
+    _garantirLibGoogle(function(){
+      _enviarUmDiarioParaODrive(d,function(){
+        sucesso++;
+        processarProximo(i+1);
+      },function(msg){
+        falha++;
+        falhasDetalhe.push('Nº '+d.numero+' ('+fmtData(d.data)+'): '+msg);
+        processarProximo(i+1);
+      });
+    });
+  });
+}
+processarProximo(0);
+}
+function _enviarUmDiarioParaODrive(d,onSucesso,onErro){
+_carregarFotosDiario(d.id,function(){
+  var painelAtivo=document.querySelector('.panel.on');
+  var painelAtivoId=painelAtivo?painelAtivo.id:'panel-historico';
+  document.getElementById('area-impressao').innerHTML=gerarHtmlDiario(d);
+  var conteudo=document.getElementById('area-impressao').firstElementChild;
+  if(!conteudo){onErro('não foi possível montar o relatório');return;}
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+  document.getElementById('panel-historico').classList.add('on');
+  document.getElementById('content-historico').style.display='none';
+  document.getElementById('content-visualizar').style.display='block';
+  function restaurarTela(){
+    document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+    document.getElementById(painelAtivoId).classList.add('on');
+    document.getElementById('content-visualizar').style.display='none';
+    document.getElementById('content-historico').style.display='block';
+  }
+  function prosseguir(){
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        setTimeout(function(){
+          _gerarEEnviarPdf(conteudo,d,function(){
+            restaurarTela();
+            onSucesso();
+          },function(msg){
+            restaurarTela();
+            onErro(msg);
+          });
+        },600);
+      });
+    });
+  }
+  if(_accessTokenDrive){
+    prosseguir();
+  }else if(_tokenClientDrive){
+    _pendingAuthCallback=prosseguir;
+    _pendingAuthErro=function(msg){restaurarTela();onErro(msg);};
+    _tokenClientDrive.requestAccessToken({prompt:'select_account'});
+  }else{
+    restaurarTela();
+    onErro('autenticação do Google ainda carregando');
   }
 });
 }
