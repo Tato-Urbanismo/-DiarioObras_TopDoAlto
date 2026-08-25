@@ -232,6 +232,7 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 <div style="display:flex;gap:10px;margin:20px 0 6px;justify-content:flex-end" class="no-print">
 <button class="btn btn-cancel" onclick="visualizarDiarioAtual()">👁 Visualizar / Imprimir</button>
 <button class="btn btn-add" style="padding:11px 26px;font-size:12px" onclick="salvarDiario()">💾 Salvar Diário do Dia</button>
+<button class="btn" style="padding:11px 26px;font-size:12px;background:#767676" onclick="salvarDiarioSemDrive()" title="Salva o diário sem gerar/enviar o PDF pro Drive — use enquanto ainda não tiver as fotos">💾 Salvar sem Drive (temporário)</button>
 </div>
 </div>
 
@@ -1363,6 +1364,24 @@ _salvarPdfDriveAutomatico(function(ano,mesPasta){
   if(salvarInd){salvarInd.textContent='salvo (PDF falhou)';salvarInd.style.color='var(--gold)';}
   alert('Diário nº '+rascunho.numero+' salvo com sucesso!\n\nMas não consegui subir o PDF pro Drive agora: '+msg+'\nVocê pode tentar de novo pela tela de Visualizar/Imprimir.');
 });
+}
+// Botão temporário: salva o diário no banco normalmente, mas SEM gerar/enviar o PDF pro Drive.
+// Útil pra preencher os diários antes de ter as fotos prontas (evita mandar PDF incompleto pro Drive).
+// Depois de importar as fotos pela ferramenta, use o envio manual em Ferramentas > Enviar Diários para o Drive.
+function salvarDiarioSemDrive(){
+rascunho.numero=calcularDias(rascunho.data).numero;
+var idx=DIARIOS.findIndex(function(d){return d.id===rascunho.id;});
+if(idx>=0){
+  DIARIOS[idx]=JSON.parse(JSON.stringify(rascunho));
+}else{
+  rascunho.id=gerarId();
+  DIARIOS.push(JSON.parse(JSON.stringify(rascunho)));
+}
+salvar();
+document.getElementById('nd-numero').value=rascunho.numero;
+var salvarInd=document.getElementById('save-ind');
+if(salvarInd){salvarInd.textContent='salvo (sem Drive)';salvarInd.style.color='var(--muted)';}
+alert('Diário nº '+rascunho.numero+' salvo com sucesso (sem enviar pro Drive).');
 }
 function _salvarPdfDriveAutomatico(onSucesso,onErro){
 _garantirLibsPdf(function(){
