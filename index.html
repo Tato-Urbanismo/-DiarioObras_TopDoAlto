@@ -519,19 +519,73 @@ if(DIARIOS.length===0&&!_cargaInicialOk){
   .catch(function(){var el=document.getElementById('save-ind');if(el){el.textContent='salvo local';el.style.color='var(--gold)';}});
   DIARIOS.forEach(function(d){
     if(d.fotos&&d.fotos.length&&d.fotos[0].dataUrl){
-      db.collection('fotos_diarios').doc(d.id).set({fotos:d.fotos}).catch(function(){});
+      _gravarFotosDiarioComChunks(d).catch(function(){});
     }
   });
 }
+}
+// Cada foto vira base64 (dataUrl), e o Firestore só aceita até 1.048.576 bytes por
+// documento. Um diário com várias fotos passa fácil desse limite, então dividimos
+// as fotos do mesmo diário em vários documentos (fotos_diarios/{id}, {id}__c2, {id}__c3...)
+// quando necessário, e juntamos tudo de volta na leitura.
+function _tamanhoFoto(f){
+return (f.dataUrl?f.dataUrl.length:0)+(f.legenda?f.legenda.length:0)+(f._srcName?f._srcName.length:0)+80;
+}
+function _dividirFotosEmChunks(fotos){
+var LIMITE=700000;
+var chunks=[[]];
+var tamanhoAtual=0;
+(fotos||[]).forEach(function(f){
+  var t=_tamanhoFoto(f);
+  if(tamanhoAtual+t>LIMITE&&chunks[chunks.length-1].length>0){
+    chunks.push([]);
+    tamanhoAtual=0;
+  }
+  chunks[chunks.length-1].push(f);
+  tamanhoAtual+=t;
+});
+return chunks;
+}
+function _gravarFotosDiarioComChunks(d,tentativas){
+tentativas=tentativas||0;
+var chunks=_dividirFotosEmChunks(d.fotos);
+var gravacoes=[];
+gravacoes.push(db.collection('fotos_diarios').doc(d.id).set({fotos:chunks[0]||[],chunkCount:chunks.length}));
+for(var i=1;i<chunks.length;i++){
+  gravacoes.push(db.collection('fotos_diarios').doc(d.id+'__c'+(i+1)).set({fotos:chunks[i]}));
+}
+return Promise.all(gravacoes).catch(function(err){
+  if(tentativas<4){
+    return new Promise(function(res){setTimeout(res,500*(tentativas+1));}).then(function(){
+      return _gravarFotosDiarioComChunks(d,tentativas+1);
+    });
+  }
+  throw err;
+});
 }
 function _carregarFotosDiario(diarioId,callback){
 var d=DIARIOS.find(function(x){return x.id===diarioId;});
 if(!d){callback();return;}
 if(!d.fotos||!d.fotos.length||d.fotos[0].dataUrl){callback();return;}
 db.collection('fotos_diarios').doc(diarioId).get().then(function(doc){
-  if(doc.exists&&doc.data().fotos)d.fotos=doc.data().fotos;
-  callback();
+  if(!doc.exists||!doc.data().fotos){callback();return;}
+  var base=doc.data();
+  var fotos=base.fotos.slice();
+  var chunkCount=base.chunkCount||1;
+  if(chunkCount<=1){d.fotos=fotos;callback();return;}
+  var promessas=[];
+  for(var i=2;i<=chunkCount;i++){
+    promessas.push(db.collection('fotos_diarios').doc(diarioId+'__c'+i).get());
+  }
+  Promise.all(promessas).then(function(docs){
+    docs.forEach(function(cd){
+      if(cd.exists&&cd.data().fotos)fotos=fotos.concat(cd.data().fotos);
+    });
+    d.fotos=fotos;
+    callback();
+  }).catch(function(){d.fotos=fotos;callback();});
 }).catch(function(){callback();});
+
 }
 function salvarConfig(){
 CONFIG.nome=document.getElementById('cf-nome').value.trim()||'LOTEAMENTO TOP DO ALTO';
@@ -1614,18 +1668,10 @@ reader.readAsDataURL(file);
 });
 }
 // Grava as fotos de UM diário no Firestore, aguardando a confirmação antes de seguir
-// (evita o problema de disparar muitas gravações simultâneas, que o Firestore rejeita
-// silenciosamente quando ultrapassa o limite de escritas na fila).
-function _ferrSalvarFotosDiarioSeguro(d,tentativas){
-tentativas=tentativas||0;
-return db.collection('fotos_diarios').doc(d.id).set({fotos:d.fotos}).catch(function(err){
-if(tentativas<4){
-return new Promise(function(res){setTimeout(res,500*(tentativas+1));}).then(function(){
-return _ferrSalvarFotosDiarioSeguro(d,tentativas+1);
-});
-}
-throw err;
-});
+// (evita o problema de disparar muitas gravações simultâneas, e usa o gravador em
+// blocos/chunks para nunca estourar o limite de 1MB por documento do Firestore).
+function _ferrSalvarFotosDiarioSeguro(d){
+return _gravarFotosDiarioComChunks(d);
 }
 // Grava só a lista leve (sem dataUrl) — usado no lugar de salvar(), que dispara uma
 // gravação por diário de uma vez só e pode sobrecarregar o Firestore em importações grandes.
