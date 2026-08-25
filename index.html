@@ -1613,6 +1613,33 @@ reader.onerror=reject;
 reader.readAsDataURL(file);
 });
 }
+// Grava as fotos de UM diário no Firestore, aguardando a confirmação antes de seguir
+// (evita o problema de disparar muitas gravações simultâneas, que o Firestore rejeita
+// silenciosamente quando ultrapassa o limite de escritas na fila).
+function _ferrSalvarFotosDiarioSeguro(d,tentativas){
+tentativas=tentativas||0;
+return db.collection('fotos_diarios').doc(d.id).set({fotos:d.fotos}).catch(function(err){
+if(tentativas<4){
+return new Promise(function(res){setTimeout(res,500*(tentativas+1));}).then(function(){
+return _ferrSalvarFotosDiarioSeguro(d,tentativas+1);
+});
+}
+throw err;
+});
+}
+// Grava só a lista leve (sem dataUrl) — usado no lugar de salvar(), que dispara uma
+// gravação por diário de uma vez só e pode sobrecarregar o Firestore em importações grandes.
+function _ferrSalvarListaLeve(){
+try{localStorage.setItem(STORAGE_KEY,JSON.stringify({config:CONFIG,diarios:DIARIOS,rascunho:rascunho}));}catch(e){}
+var diariosLeves=DIARIOS.map(function(d){
+var copia=JSON.parse(JSON.stringify(d));
+if(copia.fotos&&copia.fotos.length){
+copia.fotos=copia.fotos.map(function(f){return {legenda:f.legenda||'',temFoto:true};});
+}
+return copia;
+});
+return db.collection('diarios').doc('lista').set({itens:diariosLeves,ts:new Date().toISOString()});
+}
 var _ferrImportEmAndamento=false;
 function iniciarImportacaoFotos(){
 if(_ferrImportEmAndamento)return;
@@ -1633,17 +1660,18 @@ btn.disabled=true;btn.textContent='Importando...';
 var progresso=document.getElementById('ferr-import-progress');
 var logEl=document.getElementById('ferr-import-log');
 logEl.style.display='block';logEl.textContent='';
-var totalAdded=0,totalSkipped=0,totalErrors=0,errList=[],missingDiario=[];
+var totalAdded=0,totalSkipped=0,totalErrors=0,errList=[],missingDiario=[],falhasPersistencia=[];
 function log(msg){logEl.textContent+=msg+'\n';logEl.scrollTop=logEl.scrollHeight;}
-function processarData(i){
+async function processarData(i){
 if(i>=dates.length){
+await _ferrSalvarListaLeve().catch(function(){});
 _ferrImportEmAndamento=false;
 btn.disabled=false;btn.textContent='⬆ Iniciar Importação';
 progresso.textContent='Concluído!';
-salvar();
-var msg='Importação concluída: '+totalAdded+' foto(s) nova(s), '+totalSkipped+' já existiam, '+totalErrors+' erro(s).';
+var msg='Importação concluída: '+totalAdded+' foto(s) nova(s), '+totalSkipped+' já existiam, '+totalErrors+' erro(s) de leitura.';
 if(unmatched.length)msg+='\n'+unmatched.length+' arquivo(s) não reconhecido(s).';
 if(missingDiario.length)msg+='\n'+missingDiario.length+' data(s) sem diário correspondente.';
+if(falhasPersistencia.length)msg+='\n'+falhasPersistencia.length+' data(s) NÃO foram salvas no banco (falha ao gravar): '+falhasPersistencia.join(', ');
 log(msg);
 alert(msg);
 return;
@@ -1660,7 +1688,19 @@ var filesForDate=byDate[date];
 var pendentes=filesForDate.filter(function(f){return !jaImportados[f.name];});
 totalSkipped+=filesForDate.length-pendentes.length;
 function proximaFoto(j){
-if(j>=pendentes.length){processarData(i+1);return;}
+if(j>=pendentes.length){
+if(pendentes.length===0){processarData(i+1);return;}
+progresso.textContent='Salvando '+date+' ('+(i+1)+' de '+dates.length+')...';
+_ferrSalvarFotosDiarioSeguro(d).then(function(){
+log('✓ '+date+': '+pendentes.length+' foto(s) salva(s).');
+processarData(i+1);
+}).catch(function(err){
+falhasPersistencia.push(date);
+log('✗ '+date+': FALHOU ao salvar no banco ('+(err&&err.message?err.message:err)+').');
+processarData(i+1);
+});
+return;
+}
 var f=pendentes[j];
 _ferrCompressImageFile(f).then(function(dataUrl){
 d.fotos.push({dataUrl:dataUrl,legenda:'',_srcName:f.name});
