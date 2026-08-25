@@ -1705,6 +1705,16 @@ return copia;
 return db.collection('diarios').doc('lista').set({itens:diariosLeves,ts:new Date().toISOString()});
 }
 var _ferrImportEmAndamento=false;
+// Além do mapa da planilha original, reconhece também fotos cujo nome já traz a data
+// (ex: export do iCloud tipo "PHOTO-2026-07-15-10-57-35.jpg"), sem precisar de mapeamento.
+function _ferrDataDoNomeArquivo(nome){
+var m=nome.match(/(\d{4})-(\d{2})-(\d{2})/);
+if(!m)return null;
+var mes=parseInt(m[2],10),dia=parseInt(m[3],10),ano=parseInt(m[1],10);
+if(mes<1||mes>12||dia<1||dia>31)return null;
+if(ano<1990||ano>2100)return null;
+return m[1]+'-'+m[2]+'-'+m[3];
+}
 function iniciarImportacaoFotos(){
 if(_ferrImportEmAndamento)return;
 var files=Array.from(document.getElementById('ferr-import-input').files||[]);
@@ -1712,7 +1722,7 @@ if(!files.length){alert('Escolha primeiro a pasta com as fotos.');return;}
 var byDate={},unmatched=[];
 files.forEach(function(f){
 var base=f.name.replace(/\.[^.]+$/,'').toLowerCase();
-var date=__FOTO_MAP_PLANILHA[base];
+var date=__FOTO_MAP_PLANILHA[base]||_ferrDataDoNomeArquivo(f.name);
 if(!date){unmatched.push(f.name);return;}
 (byDate[date]=byDate[date]||[]).push(f);
 });
