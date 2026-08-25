@@ -116,6 +116,7 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 <button class="on" onclick="mudarAba('novo',this)">📝 Diário de Hoje</button>
 <button onclick="mudarAba('historico',this)">📚 Histórico</button>
 <button onclick="mudarAba('config',this)">⚙ Configurações da Obra</button>
+<button onclick="mudarAba('ferramentas',this)">🛠 Ferramentas</button>
 </nav>
 
 <div class="panel on" id="panel-novo">
@@ -321,6 +322,33 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 
 </div>
 
+
+<div class="panel" id="panel-ferramentas">
+<div class="sbar" style="margin-top:0">📷 Importar Fotos da Planilha</div>
+<div class="folha">
+<p style="font-size:11px;color:var(--muted);margin-bottom:10px">Selecione a pasta <b>xl\media</b> (com todas as fotos originais da planilha). O sistema identifica a data de cada foto automaticamente e anexa ao diário correspondente — as fotos já importadas não são duplicadas, então pode rodar de novo quantas vezes precisar.</p>
+<input type="file" id="ferr-import-input" webkitdirectory directory multiple accept="image/*" style="display:none" onchange="_ferrAtualizarLabelImport()">
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<button class="btn btn-add" onclick="document.getElementById('ferr-import-input').click()">📁 Escolher Pasta de Fotos</button>
+<button class="btn" id="ferr-import-btn" style="background:var(--blue)" onclick="iniciarImportacaoFotos()">⬆ Iniciar Importação</button>
+</div>
+<div id="ferr-import-label" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
+<div id="ferr-import-progress" style="font-size:11.5px;font-weight:700;margin-top:10px"></div>
+<div id="ferr-import-log" style="font-family:monospace;font-size:10.5px;color:#333;max-height:180px;overflow:auto;background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:8px;margin-top:6px;white-space:pre-wrap;display:none"></div>
+</div>
+
+<div class="sbar">☁ Enviar Diários para o Google Drive</div>
+<div class="folha">
+<p style="font-size:11px;color:var(--muted);margin-bottom:10px">Envia os PDFs dos diários dentro do período escolhido para o Google Drive, um de cada vez. Use para enviar apenas os diários que já estão prontos, sem mexer nos demais.</p>
+<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+<div><label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">Data Inicial</label><input type="date" id="ferr-drive-inicio" style="border:1px solid #999;border-radius:3px;padding:7px 9px;font-family:Arial,sans-serif;font-size:12px"></div>
+<div><label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">Data Final</label><input type="date" id="ferr-drive-fim" style="border:1px solid #999;border-radius:3px;padding:7px 9px;font-family:Arial,sans-serif;font-size:12px"></div>
+<button class="btn" id="ferr-drive-btn" style="background:var(--blue)" onclick="iniciarEnvioDrive()">☁ Iniciar Envio</button>
+</div>
+<div id="ferr-drive-progress" style="font-size:11.5px;font-weight:700"></div>
+<div id="ferr-drive-log" style="font-family:monospace;font-size:10.5px;color:#333;max-height:180px;overflow:auto;background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:8px;margin-top:6px;white-space:pre-wrap;display:none"></div>
+</div>
+</div>
 <div class="modal-overlay" id="modal-efetivo" onclick="if(event.target===this)fecharModal('modal-efetivo')">
 <div class="modal-box"><div class="modal-head"><h3>Cadastrar Função</h3><button class="modal-close" onclick="fecharModal('modal-efetivo')">✕</button></div>
 <div class="modal-body">
@@ -1554,6 +1582,159 @@ _carregarFotosDiario(d.id,function(){
 });
 }
 
+// ================== FERRAMENTAS: Importar Fotos da Planilha ==================
+var __FOTO_MAP_PLANILHA = 
+{"image154":"2026-02-18","image155":"2026-02-18","image156":"2026-02-18","image157":"2026-02-18","image158":"2026-02-18","image159":"2026-02-18","image160":"2026-02-18","image161":"2026-02-19","image162":"2026-02-19","image163":"2026-02-19","image164":"2026-02-19","image165":"2026-02-20","image166":"2026-02-20","image167":"2026-02-20","image168":"2026-02-20","image169":"2026-02-20","image170":"2026-02-20","image171":"2026-02-23","image172":"2026-02-23","image173":"2026-02-23","image174":"2026-02-23","image175":"2026-02-23","image176":"2026-02-23","image177":"2026-02-23","image178":"2026-02-23","image179":"2026-02-24","image180":"2026-02-25","image181":"2026-02-26","image182":"2026-02-25","image183":"2026-02-25","image184":"2026-02-26","image185":"2026-02-27","image186":"2026-02-27","image187":"2026-02-27","image188":"2026-02-27","image189":"2026-02-27","image190":"2026-02-27","image191":"2026-03-02","image192":"2026-03-02","image193":"2026-03-02","image194":"2026-03-02","image195":"2026-03-03","image196":"2026-03-03","image197":"2026-03-03","image198":"2026-03-03","image199":"2026-03-03","image200":"2026-03-03","image201":"2026-03-03","image202":"2026-03-04","image203":"2026-03-04","image204":"2026-03-04","image205":"2026-03-04","image206":"2026-03-04","image207":"2026-03-04","image208":"2026-03-04","image209":"2026-03-04","image210":"2026-03-05","image211":"2026-03-05","image212":"2026-03-05","image213":"2026-03-06","image214":"2026-03-06","image215":"2026-03-06","image216":"2026-03-06","image217":"2026-03-06","image218":"2026-03-09","image219":"2026-03-09","image220":"2026-03-09","image221":"2026-03-09","image222":"2026-03-09","image223":"2026-03-10","image224":"2026-03-10","image225":"2026-03-10","image226":"2026-03-10","image227":"2026-03-10","image228":"2026-03-10","image229":"2026-03-10","image230":"2026-03-10","image231":"2026-03-12","image232":"2026-03-12","image233":"2026-03-13","image234":"2026-03-13","image235":"2026-03-13","image236":"2026-03-13","image237":"2026-03-13","image238":"2026-03-13","image239":"2026-03-13","image240":"2026-03-13","image241":"2026-03-13","image242":"2026-03-13","image243":"2026-03-16","image244":"2026-03-16","image245":"2026-03-16","image246":"2026-03-16","image247":"2026-03-16","image248":"2026-03-16","image249":"2026-03-16","image250":"2026-03-17","image251":"2026-03-17","image252":"2026-03-17","image253":"2026-03-17","image254":"2026-03-18","image255":"2026-03-18","image256":"2026-03-18","image257":"2026-03-18","image258":"2026-03-18","image259":"2026-03-19","image260":"2026-03-19","image261":"2026-03-19","image262":"2026-03-19","image263":"2026-03-19","image264":"2026-03-19","image265":"2026-03-19","image266":"2026-03-19","image267":"2026-03-19","image268":"2026-03-23","image269":"2026-03-20","image270":"2026-03-20","image271":"2026-03-23","image272":"2026-03-23","image273":"2026-03-23","image274":"2026-03-23","image275":"2026-03-23","image276":"2026-03-23","image277":"2026-03-23","image278":"2026-03-24","image279":"2026-03-24","image280":"2026-03-24","image281":"2026-03-24","image282":"2026-03-24","image283":"2026-03-24","image284":"2026-03-24","image285":"2026-03-24","image286":"2026-03-24","image287":"2026-03-24","image288":"2026-03-25","image289":"2026-03-25","image290":"2026-03-25","image291":"2026-03-25","image292":"2026-03-26","image293":"2026-03-26","image294":"2026-03-26","image295":"2026-03-26","image296":"2026-03-26","image297":"2026-03-26","image298":"2026-03-27","image299":"2026-03-27","image300":"2026-03-27","image301":"2026-03-27","image302":"2026-03-27","image303":"2026-03-27","image304":"2026-03-30","image305":"2026-03-30","image306":"2026-03-30","image307":"2026-03-30","image308":"2026-03-30","image309":"2026-03-30","image310":"2026-03-30","image311":"2026-03-30","image312":"2026-03-30","image313":"2026-03-31","image314":"2026-03-31","image315":"2026-03-31","image316":"2026-03-31","image317":"2026-03-31","image318":"2026-03-31","image319":"2026-04-01","image320":"2026-04-01","image321":"2026-04-01","image322":"2026-04-01","image323":"2026-04-01","image324":"2026-04-02","image325":"2026-04-02","image326":"2026-04-02","image327":"2026-04-03","image328":"2026-04-04","image329":"2026-04-04","image330":"2026-04-06","image331":"2026-04-06","image332":"2026-04-06","image333":"2026-04-06","image334":"2026-04-06","image335":"2026-04-06","image336":"2026-04-07","image337":"2026-04-07","image338":"2026-04-07","image339":"2026-04-08","image340":"2026-04-09","image341":"2026-04-09","image342":"2026-04-09","image343":"2026-04-09","image344":"2026-04-11","image345":"2026-04-13","image346":"2026-04-13","image347":"2026-04-13","image348":"2026-04-13","image349":"2026-04-13","image350":"2026-04-14","image351":"2026-04-14","image352":"2026-04-14","image353":"2026-04-14","image354":"2026-04-14","image355":"2026-04-15","image356":"2026-04-15","image357":"2026-04-15","image358":"2026-04-15","image359":"2026-04-15","image360":"2026-04-15","image361":"2026-04-15","image362":"2026-04-15","image363":"2026-04-15","image364":"2026-04-15","image365":"2026-04-16","image366":"2026-04-17","image367":"2026-04-17","image368":"2026-04-17","image369":"2026-04-17","image370":"2026-04-17","image371":"2026-04-17","image372":"2026-04-17","image373":"2026-04-17","image374":"2026-04-18","image375":"2026-04-18","image376":"2026-04-18","image377":"2026-04-20","image378":"2026-04-20","image379":"2026-04-20","image380":"2026-04-21","image381":"2026-04-21","image382":"2026-04-21","image383":"2026-04-21","image384":"2026-04-21","image385":"2026-04-21","image386":"2026-04-21","image387":"2026-04-22","image388":"2026-04-22","image389":"2026-04-22","image390":"2026-04-23","image391":"2026-04-23","image392":"2026-04-23","image393":"2026-04-23","image394":"2026-04-23","image395":"2026-04-23","image396":"2026-04-23","image397":"2026-04-24","image398":"2026-04-24","image399":"2026-04-24","image400":"2026-04-24","image401":"2026-04-24","image402":"2026-04-24","image403":"2026-04-24","image404":"2026-04-24","image405":"2026-04-24","image406":"2026-04-27","image407":"2026-04-27","image408":"2026-04-27","image409":"2026-04-27","image410":"2026-04-27","image411":"2026-04-27","image412":"2026-04-27","image413":"2026-04-27","image414":"2026-04-27","image415":"2026-04-27","image416":"2026-04-28","image417":"2026-04-28","image418":"2026-04-29","image419":"2026-04-29","image420":"2026-04-29","image421":"2026-04-29","image422":"2026-04-29","image423":"2026-04-30","image424":"2026-04-30","image425":"2026-04-30","image426":"2026-04-30","image427":"2026-04-30","image428":"2026-04-30","image429":"2026-05-01","image430":"2026-05-01","image431":"2026-05-01","image432":"2026-05-01","image433":"2026-05-01","image434":"2026-05-01","image435":"2026-05-01","image436":"2026-05-02","image437":"2026-05-02","image438":"2026-05-02","image439":"2026-05-02","image440":"2026-05-02","image441":"2026-05-02","image442":"2026-05-02","image443":"2026-05-02","image444":"2026-05-04","image445":"2026-05-04","image446":"2026-05-04","image447":"2026-05-04","image448":"2026-05-04","image449":"2026-05-04","image450":"2026-05-04","image451":"2026-05-04","image452":"2026-05-04","image453":"2026-05-04","image454":"2026-05-06","image455":"2026-05-06","image456":"2026-05-06","image457":"2026-05-06","image458":"2026-05-06","image459":"2026-05-06","image460":"2026-05-07","image461":"2026-05-07","image462":"2026-05-07","image463":"2026-05-07","image464":"2026-05-07","image465":"2026-05-08","image466":"2026-05-08","image467":"2026-05-09","image468":"2026-05-09","image469":"2026-05-09","image470":"2026-05-09","image471":"2026-05-09","image472":"2026-05-09","image473":"2026-05-11","image474":"2026-05-11","image475":"2026-05-12","image476":"2026-05-12","image477":"2026-05-13","image478":"2026-05-13","image479":"2026-05-13","image480":"2026-05-13","image481":"2026-05-13","image482":"2026-05-13","image483":"2026-05-14","image484":"2026-05-14","image485":"2026-05-14","image486":"2026-05-14","image487":"2026-05-15","image488":"2026-05-15","image489":"2026-05-15","image490":"2026-05-15","image491":"2026-05-15","image492":"2026-05-15","image493":"2026-05-15","image494":"2026-05-15","image495":"2026-05-15","image496":"2026-05-18","image497":"2026-05-18","image498":"2026-05-18","image499":"2026-05-18","image500":"2026-05-18","image501":"2026-05-18","image502":"2026-05-18","image503":"2026-05-18","image504":"2026-05-19","image505":"2026-05-19","image506":"2026-05-19","image507":"2026-05-19","image508":"2026-05-19","image509":"2026-05-19","image510":"2026-05-19","image511":"2026-05-19","image512":"2026-05-19","image513":"2026-05-19","image514":"2026-05-20","image515":"2026-05-20","image516":"2026-05-20","image517":"2026-05-20","image518":"2026-05-20","image519":"2026-05-20","image520":"2026-05-20","image521":"2026-05-21","image522":"2026-05-21","image523":"2026-05-21","image524":"2026-05-21","image525":"2026-05-21","image526":"2026-05-21","image527":"2026-05-21","image528":"2026-05-21","image529":"2026-05-21","image530":"2026-05-21","image531":"2026-05-22","image532":"2026-05-22","image533":"2026-05-22","image534":"2026-05-22","image535":"2026-05-22","image536":"2026-05-22","image537":"2026-05-22","image538":"2026-05-22","image539":"2026-05-22","image540":"2026-05-22","image541":"2026-05-25","image542":"2026-05-25","image543":"2026-05-25","image544":"2026-05-25","image545":"2026-05-25","image546":"2026-05-25","image547":"2026-05-25","image548":"2026-05-25","image549":"2026-05-25","image550":"2026-05-25","image551":"2026-05-26","image552":"2026-05-26","image553":"2026-05-26","image554":"2026-05-26","image555":"2026-05-26","image556":"2026-05-26","image557":"2026-05-26","image558":"2026-05-26","image559":"2026-05-26","image560":"2026-05-26","image561":"2026-05-27","image562":"2026-05-27","image563":"2026-05-27","image564":"2026-05-27","image565":"2026-05-27","image566":"2026-05-27","image567":"2026-05-27","image568":"2026-05-27","image569":"2026-05-28","image570":"2026-05-28","image571":"2026-05-28","image572":"2026-05-28","image573":"2026-05-28","image574":"2026-05-28","image575":"2026-05-29","image576":"2026-05-29","image577":"2026-05-29","image578":"2026-05-29","image579":"2026-05-29","image580":"2026-05-29","image581":"2026-06-01","image582":"2026-06-01","image583":"2026-06-01","image584":"2026-06-01","image585":"2026-06-01","image586":"2026-06-01","image587":"2026-06-01","image588":"2026-06-02","image589":"2026-06-02","image590":"2026-06-02","image591":"2026-06-02","image592":"2026-06-02","image593":"2026-06-02","image594":"2026-06-03","image595":"2026-06-03","image596":"2026-06-03","image597":"2026-06-03","image598":"2026-06-03","image599":"2026-06-04","image600":"2026-06-05","image601":"2026-06-05","image602":"2026-06-05","image603":"2026-06-05","image604":"2026-06-05","image605":"2026-06-05","image606":"2026-06-08","image607":"2026-06-08","image608":"2026-06-08","image609":"2026-06-08","image610":"2026-06-08","image611":"2026-06-08","image612":"2026-06-08","image613":"2026-06-08","image614":"2026-06-08","image615":"2026-06-08","image616":"2026-06-09","image617":"2026-06-09","image618":"2026-06-09","image619":"2026-06-09","image620":"2026-06-09","image621":"2026-06-09","image622":"2026-06-09","image623":"2026-06-10","image624":"2026-06-10","image625":"2026-06-10","image626":"2026-06-10","image627":"2026-06-10","image628":"2026-06-10","image629":"2026-06-10","image630":"2026-06-10","image631":"2026-06-11","image632":"2026-06-11","image633":"2026-06-11","image634":"2026-06-11","image635":"2026-06-11","image636":"2026-06-11","image637":"2026-06-11","image638":"2026-06-11","image639":"2026-06-11","image640":"2026-06-12","image641":"2026-06-12","image642":"2026-06-12","image643":"2026-06-12","image644":"2026-06-13","image645":"2026-06-13","image646":"2026-06-13","image647":"2026-06-13","image648":"2026-06-13","image649":"2026-06-13","image650":"2026-06-13","image651":"2026-06-13","image652":"2026-06-13","image653":"2026-06-13","image654":"2026-06-15","image655":"2026-06-15","image656":"2026-06-15","image657":"2026-06-15","image658":"2026-06-15","image659":"2026-06-17","image660":"2026-06-17","image661":"2026-06-17","image662":"2026-06-17","image663":"2026-06-17","image664":"2026-06-17","image665":"2026-06-17","image666":"2026-06-18","image667":"2026-06-18","image668":"2026-06-18","image669":"2026-06-18","image670":"2026-06-18","image671":"2026-06-18","image672":"2026-06-18","image673":"2026-06-18","image674":"2026-06-18","image675":"2026-06-18","image676":"2026-06-19","image677":"2026-06-19","image678":"2026-06-19","image679":"2026-06-19","image680":"2026-06-20","image681":"2026-06-22","image682":"2026-06-22","image683":"2026-06-22","image684":"2026-06-22","image685":"2026-06-22","image686":"2026-06-22","image687":"2026-06-23","image688":"2026-06-23","image689":"2026-06-23","image690":"2026-06-23","image691":"2026-06-23","image692":"2026-06-23","image693":"2026-06-23","image694":"2026-06-23","image695":"2026-06-23","image696":"2026-06-23","image697":"2026-06-24","image698":"2026-06-24","image699":"2026-06-24","image700":"2026-06-24","image701":"2026-06-24","image702":"2026-06-24","image703":"2026-06-24","image704":"2026-06-24","image705":"2026-06-24","image706":"2026-06-25","image707":"2026-06-25","image708":"2026-06-25","image709":"2026-06-25","image710":"2026-06-25","image711":"2026-06-25","image712":"2026-06-26","image713":"2026-06-26","image714":"2026-06-26","image715":"2026-06-26","image716":"2026-06-26","image717":"2026-06-26","image718":"2026-06-26","image719":"2026-06-26","image720":"2026-06-26","image721":"2026-06-26","image722":"2026-06-27","image723":"2026-06-27","image724":"2026-06-27","image725":"2026-06-27","image726":"2026-06-27","image727":"2026-06-27","image728":"2026-06-27","image729":"2026-06-27","image730":"2026-06-29","image731":"2026-06-29","image732":"2026-06-29","image733":"2026-06-29","image734":"2026-06-29","image735":"2026-06-29","image736":"2026-06-29","image737":"2026-06-29","image738":"2026-06-29","image739":"2026-06-29","image740":"2026-06-30","image741":"2026-06-30","image742":"2026-06-30","image743":"2026-06-30","image744":"2026-06-30","image745":"2026-06-30","image746":"2026-06-30","image747":"2026-06-30","image748":"2026-06-30","image749":"2026-06-30","image750":"2026-07-01","image751":"2026-07-01","image752":"2026-07-01","image753":"2026-07-01","image754":"2026-07-02","image755":"2026-07-02","image756":"2026-07-02","image757":"2026-07-02","image758":"2026-07-02","image759":"2026-07-02","image760":"2026-07-02","image761":"2026-07-02","image762":"2026-07-02","image763":"2026-07-02","image764":"2026-07-03","image765":"2026-07-03","image766":"2026-07-03","image767":"2026-07-03","image768":"2026-07-03","image769":"2026-07-03","image770":"2026-07-03","image771":"2026-07-03","image772":"2026-07-03","image773":"2026-07-03","image774":"2026-07-06","image775":"2026-07-06","image776":"2026-07-06","image777":"2026-07-06","image778":"2026-07-06","image779":"2026-07-06","image780":"2026-07-06","image781":"2026-07-06","image782":"2026-07-07","image783":"2026-07-07","image784":"2026-07-07","image785":"2026-07-07","image786":"2026-07-07","image787":"2026-07-08","image788":"2026-07-08","image789":"2026-07-08","image790":"2026-07-08","image791":"2026-07-08","image792":"2026-07-08","image793":"2026-07-08","image794":"2026-07-08","image795":"2026-07-09","image796":"2026-07-09","image797":"2026-07-09","image798":"2026-07-09","image799":"2026-07-09","image800":"2026-07-09","image801":"2026-07-09","image802":"2026-07-09","image803":"2026-07-09","image804":"2026-07-09","image805":"2026-07-10","image806":"2026-07-10","image807":"2026-07-10","image808":"2026-07-10","image809":"2026-07-10","image810":"2026-07-10","image811":"2026-07-10","image812":"2026-07-10","image813":"2026-07-10","image814":"2026-07-10","image815":"2026-07-13","image816":"2026-07-13","image817":"2026-07-13","image818":"2026-07-13","image819":"2026-07-13","image820":"2026-07-13","image821":"2026-07-14","image822":"2026-07-14","image823":"2026-07-14","image824":"2026-07-14","image825":"2026-07-14","image826":"2026-07-14","image827":"2026-07-14","image828":"2026-07-14","image829":"2026-07-14","image830":"2026-07-14","image831":"2026-07-15","image832":"2026-07-15","image833":"2026-07-15","image834":"2026-07-15","image835":"2026-07-16","image836":"2026-07-16","image837":"2026-07-16","image838":"2026-07-16","image839":"2026-07-16","image840":"2026-07-16","image841":"2026-07-16","image842":"2026-07-16","image843":"2026-07-16","image844":"2026-07-16"};
+function _ferrAtualizarLabelImport(){
+var files=document.getElementById('ferr-import-input').files||[];
+document.getElementById('ferr-import-label').textContent=files.length?files.length+' arquivo(s) selecionado(s).':'';
+}
+function _ferrCompressImageFile(file){
+return new Promise(function(resolve,reject){
+var reader=new FileReader();
+reader.onload=function(e){
+var img=new Image();
+img.onload=function(){
+try{
+var MAX_W=1100;
+var scale=Math.min(1,MAX_W/img.width);
+var w=Math.round(img.width*scale);
+var h=Math.round(img.height*scale);
+var canvas=document.createElement('canvas');
+canvas.width=w;canvas.height=h;
+canvas.getContext('2d').drawImage(img,0,0,w,h);
+resolve(canvas.toDataURL('image/jpeg',0.8));
+}catch(err){reject(err);}
+};
+img.onerror=function(){reject(new Error('falha ao decodificar imagem'));};
+img.src=e.target.result;
+};
+reader.onerror=reject;
+reader.readAsDataURL(file);
+});
+}
+var _ferrImportEmAndamento=false;
+function iniciarImportacaoFotos(){
+if(_ferrImportEmAndamento)return;
+var files=Array.from(document.getElementById('ferr-import-input').files||[]);
+if(!files.length){alert('Escolha primeiro a pasta com as fotos.');return;}
+var byDate={},unmatched=[];
+files.forEach(function(f){
+var base=f.name.replace(/\.[^.]+$/,'').toLowerCase();
+var date=__FOTO_MAP_PLANILHA[base];
+if(!date){unmatched.push(f.name);return;}
+(byDate[date]=byDate[date]||[]).push(f);
+});
+var dates=Object.keys(byDate).sort();
+if(!dates.length){alert('Nenhuma foto reconhecida nesta pasta. Confirme que selecionou a pasta xl\\media.');return;}
+_ferrImportEmAndamento=true;
+var btn=document.getElementById('ferr-import-btn');
+btn.disabled=true;btn.textContent='Importando...';
+var progresso=document.getElementById('ferr-import-progress');
+var logEl=document.getElementById('ferr-import-log');
+logEl.style.display='block';logEl.textContent='';
+var totalAdded=0,totalSkipped=0,totalErrors=0,errList=[],missingDiario=[];
+function log(msg){logEl.textContent+=msg+'\n';logEl.scrollTop=logEl.scrollHeight;}
+function processarData(i){
+if(i>=dates.length){
+_ferrImportEmAndamento=false;
+btn.disabled=false;btn.textContent='⬆ Iniciar Importação';
+progresso.textContent='Concluído!';
+salvar();
+var msg='Importação concluída: '+totalAdded+' foto(s) nova(s), '+totalSkipped+' já existiam, '+totalErrors+' erro(s).';
+if(unmatched.length)msg+='\n'+unmatched.length+' arquivo(s) não reconhecido(s).';
+if(missingDiario.length)msg+='\n'+missingDiario.length+' data(s) sem diário correspondente.';
+log(msg);
+alert(msg);
+return;
+}
+var date=dates[i];
+progresso.textContent='Processando '+(i+1)+' de '+dates.length+': '+date+'...';
+var d=DIARIOS.find(function(x){return x.data===date;});
+if(!d){missingDiario.push(date);log('Sem diário para '+date+' — pulando.');processarData(i+1);return;}
+_carregarFotosDiario(d.id,function(){
+if(!d.fotos)d.fotos=[];
+var jaImportados={};
+d.fotos.forEach(function(f){if(f._srcName)jaImportados[f._srcName]=true;});
+var filesForDate=byDate[date];
+var pendentes=filesForDate.filter(function(f){return !jaImportados[f.name];});
+totalSkipped+=filesForDate.length-pendentes.length;
+function proximaFoto(j){
+if(j>=pendentes.length){processarData(i+1);return;}
+var f=pendentes[j];
+_ferrCompressImageFile(f).then(function(dataUrl){
+d.fotos.push({dataUrl:dataUrl,legenda:'',_srcName:f.name});
+totalAdded++;
+proximaFoto(j+1);
+}).catch(function(){
+totalErrors++;errList.push(f.name);
+proximaFoto(j+1);
+});
+}
+proximaFoto(0);
+});
+}
+processarData(0);
+}
+
+// ================== FERRAMENTAS: Enviar Diários (por período) para o Drive ==================
+var _ferrEnvioCancelado=false;
+var _ferrEnvioEmAndamento=false;
+function iniciarEnvioDrive(){
+if(_ferrEnvioEmAndamento)return;
+if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){alert('A conexão com o Google Drive ainda não foi configurada.');return;}
+var inicio=document.getElementById('ferr-drive-inicio').value;
+var fim=document.getElementById('ferr-drive-fim').value;
+if(!fim){alert('Escolha ao menos a data final.');return;}
+var lista=DIARIOS.slice().filter(function(d){
+if(!d.data)return false;
+if(inicio&&d.data<inicio)return false;
+if(d.data>fim)return false;
+return true;
+}).sort(function(a,b){return (a.data||'').localeCompare(b.data||'');});
+if(!lista.length){alert('Nenhum diário encontrado nesse período.');return;}
+if(!confirm('Isso vai gerar e enviar '+lista.length+' PDF(s) pro Google Drive, um de cada vez ('+(inicio||'início')+' até '+fim+'). Pode demorar. Deseja continuar?'))return;
+_ferrEnvioCancelado=false;
+_ferrEnvioEmAndamento=true;
+var btn=document.getElementById('ferr-drive-btn');
+btn.textContent='Cancelar envio';
+btn.onclick=function(){_ferrEnvioCancelado=true;};
+var progresso=document.getElementById('ferr-drive-progress');
+var logEl=document.getElementById('ferr-drive-log');
+logEl.style.display='block';logEl.textContent='';
+function log(msg){logEl.textContent+=msg+'\n';logEl.scrollTop=logEl.scrollHeight;}
+var sucesso=0,falha=0,falhasDetalhe=[];
+function finalizar(cancelado){
+_ferrEnvioEmAndamento=false;
+btn.textContent='☁ Iniciar Envio';
+btn.onclick=function(){iniciarEnvioDrive();};
+progresso.textContent='';
+var msg=(cancelado?'Envio cancelado. ':'Envio concluído! ')+sucesso+' enviado(s), '+falha+' falharam.';
+log(msg);
+if(falhasDetalhe.length)log('Falhas:\n'+falhasDetalhe.join('\n'));
+alert(msg);
+}
+function processarProximo(i){
+if(_ferrEnvioCancelado||i>=lista.length){finalizar(_ferrEnvioCancelado);return;}
+var d=lista[i];
+progresso.textContent='Enviando '+(i+1)+' de '+lista.length+': diário nº '+d.numero+' ('+fmtData(d.data)+')...';
+_garantirLibsPdf(function(){
+_garantirLibGoogle(function(){
+_enviarUmDiarioParaODrive(d,function(){
+sucesso++;
+log('OK Nº '+d.numero+' ('+fmtData(d.data)+') enviado.');
+processarProximo(i+1);
+},function(msg){
+falha++;
+falhasDetalhe.push('Nº '+d.numero+' ('+fmtData(d.data)+'): '+msg);
+log('ERRO Nº '+d.numero+' ('+fmtData(d.data)+'): '+msg);
+processarProximo(i+1);
+});
+});
+});
+}
+processarProximo(0);
+}
 function salvarPdfNoDrive(){
 if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){alert('A conexão com o Google Drive ainda não foi configurada.');return;}
 var btn=document.getElementById('btn-salvar-pdf-drive');
