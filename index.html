@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Diário Top do Alto">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -98,6 +99,10 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 @page{size:A4 portrait;margin:3mm}
 @media print{header,nav,.no-print{display:none!important}.panel{display:none!important;max-width:100%;padding:0}.panel.on{display:block!important}#area-impressao{display:flex;justify-content:center}}
 @media (max-width:640px){.gtable{font-size:calc(10px * var(--largura-c,1))}.gtable td,.gtable th{padding:calc(4px * var(--altura-l,1)) calc(5px * var(--largura-c,1))}}
+/* Trava extra contra o celular "grifar" de azul nomes/números do relatório (empresa, qtd etc.)
+   quando detecta como telefone/endereço/data — o meta format-detection já evita isso, isso aqui
+   é reforço caso algum navegador ainda tente. */
+#area-impressao a,#area-impressao [x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;pointer-events:none}
 @media (orientation:landscape){#tela-abertura{background-image:url('splash-bg-landscape.jpg')!important}}
 </style>
 </head>
@@ -2153,19 +2158,17 @@ var assinaturaHtml=CONFIG.assinaturaImg?
   '<img src="'+CONFIG.assinaturaImg+'" style="height:60px;display:block;margin:0 auto">':
   '<div style="border-top:1px solid #111;width:260px;margin:36px auto 4px"></div>';
 
-var gruposEfetivoHtml=(t.gruposEfetivo||[]).map(function(g,i,arr){
-  var minhas=contarLinhasEfetivo(g.id,d.efetivo&&d.efetivo[g.id]);
-  var parIdx=(i%2===0)?i+1:i-1;
-  var doPar=arr[parIdx]?contarLinhasEfetivo(arr[parIdx].id,d.efetivo&&d.efetivo[arr[parIdx].id]):0;
-  var minLinhas=Math.max(minhas,doPar);
-  return '<div style="width:'+(100/Math.min(2,t.gruposEfetivo.length||1))+'%">'+tabelaEfetivo(g.nome,g.id,d.efetivo&&d.efetivo[g.id],minLinhas)+'</div>';
+// Mesma quantidade de colunas que a tela de edição usa (uma coluna por grupo cadastrado,
+// sem limitar em 2) — antes ficava sempre travado em no máximo 2 colunas, então com 3
+// grupos de efetivo (Administrativo/Produção/Terceiros) o 3º ia pra uma linha sozinho,
+// diferente da tela de preenchimento.
+var maxLinhasEfetivo=Math.max.apply(null,[0].concat((t.gruposEfetivo||[]).map(function(g){return contarLinhasEfetivo(g.id,d.efetivo&&d.efetivo[g.id]);})));
+var gruposEfetivoHtml=(t.gruposEfetivo||[]).map(function(g){
+  return '<div style="width:'+(100/(t.gruposEfetivo.length||1))+'%">'+tabelaEfetivo(g.nome,g.id,d.efetivo&&d.efetivo[g.id],maxLinhasEfetivo)+'</div>';
 }).join('');
-var gruposEquipHtml=(t.gruposEquip||[]).map(function(g,i,arr){
-  var minhas=contarLinhasEquip(g.id,d.equip&&d.equip[g.id]);
-  var parIdx=(i%2===0)?i+1:i-1;
-  var doPar=arr[parIdx]?contarLinhasEquip(arr[parIdx].id,d.equip&&d.equip[arr[parIdx].id]):0;
-  var minLinhas=Math.max(minhas,doPar);
-  return '<div style="width:'+(100/Math.min(2,t.gruposEquip.length||1))+'%">'+tabelaEquip(g.nome,g.id,d.equip&&d.equip[g.id],minLinhas)+'</div>';
+var maxLinhasEquip=Math.max.apply(null,[0].concat((t.gruposEquip||[]).map(function(g){return contarLinhasEquip(g.id,d.equip&&d.equip[g.id]);})));
+var gruposEquipHtml=(t.gruposEquip||[]).map(function(g){
+  return '<div style="width:'+(100/(t.gruposEquip.length||1))+'%">'+tabelaEquip(g.nome,g.id,d.equip&&d.equip[g.id],maxLinhasEquip)+'</div>';
 }).join('');
 
 var htmlFinal='<div style="max-width:100%;margin:0 auto;background:#fff;padding:10px;font-family:Arial,Helvetica,sans-serif;color:#111;border:2px solid #333">'+
@@ -2200,11 +2203,9 @@ htmlFinal+='<div style="background:#111;color:#fff;padding:5px 10px;font-size:11
 
 htmlFinal+='<div style="background:#111;color:#fff;padding:5px 10px;font-size:11px;font-weight:700;margin-bottom:2px">'+t.tituloFreq+'</div>'+
 '<div style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:2px">'+gruposEfetivoHtml+'</div>'+
-'<div style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:6px">'+gruposEquipHtml+'</div>'+
-'<div style="display:flex;gap:10px;margin-bottom:14px">'+
-'<div style="flex:1;border:1px solid #999;padding:8px;text-align:center;font-size:13px;font-weight:700;background:#f4f1eb">TOTAL GERAL MÃO DE OBRA: <span style="font-size:16px">'+totalMO+'</span></div>'+
-'<div style="flex:1;border:1px solid #999;padding:8px;text-align:center;font-size:13px;font-weight:700;background:#f4f1eb">TOTAL GERAL EQUIPAMENTOS: <span style="font-size:16px">'+totalEq+'</span></div>'+
-'</div>'+
+'<table class="gtable center" style="margin-top:-1px;margin-bottom:6px"><tr><td class="head2" style="font-size:13px;padding:8px">TOTAL GERAL MÃO DE OBRA: <span style="font-size:16px">'+totalMO+'</span></td></tr></table>'+
+'<div style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:2px">'+gruposEquipHtml+'</div>'+
+'<table class="gtable center" style="margin-top:0;margin-bottom:14px"><tr><td class="head2" style="font-size:13px;padding:8px">TOTAL GERAL EQUIPAMENTOS: <span style="font-size:16px">'+totalEq+'</span></td></tr></table>'+
 
 '<div style="background:#111;color:#fff;padding:5px 10px;font-size:11px;font-weight:700;margin-bottom:2px">'+t.tituloAtiv+'</div>'+
 '<div style="border:1px solid #999;padding:8px;font-size:10.5px;margin-bottom:14px">'+atividadesHtml+'</div>';
