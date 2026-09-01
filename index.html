@@ -1337,16 +1337,31 @@ if(existente&&existente.id!==rascunho.id){
   }
 }
 if(!existente&&rascunho.id){
-  // Vira um diário novo pra essa data (sem sobrescrever o diário já salvo na data antiga,
-  // já que ele fica com outro id do zero), mas mantém o efetivo e os equipamentos que já
-  // estavam preenchidos — eles costumam se repetir de um dia pro outro. Só o que é
-  // específico do dia (atividades, fotos, comentários etc.) começa em branco.
-  rascunho=Object.assign(criarRascunhoVazio(),{
-    data:novaData,
-    efetivo:JSON.parse(JSON.stringify(rascunho.efetivo||{})),
-    equip:JSON.parse(JSON.stringify(rascunho.equip||{}))
-  });
-  preencherFormRascunho();
+  // Ambíguo: mudar a data de um diário JÁ SALVO pra uma data livre pode significar duas
+  // coisas bem diferentes — (1) só corrigir um erro de digitação na data desse mesmo diário,
+  // ou (2) usar esse diário como modelo pra começar um dia novo (reaproveitando mão de obra
+  // e equipamentos, que se repetem, mas zerando atividades/fotos/comentários). Como o app não
+  // tem como adivinhar a intenção, pergunta explicitamente em vez de decidir sozinho e apagar
+  // conteúdo sem avisar.
+  var apenasCorrigirData=confirm(
+    'Você mudou a data do diário nº '+rascunho.numero+' para '+fmtData(novaData)+', que ainda não tem diário salvo.\n\n'+
+    'OK = só corrigir a data deste diário (mantém atividades, fotos, comentários e tudo mais).\n'+
+    'Cancelar = criar um diário NOVO para '+fmtData(novaData)+', reaproveitando a mão de obra e os equipamentos deste diário como modelo (zera atividades, fotos e comentários).'
+  );
+  if(apenasCorrigirData){
+    rascunho.data=novaData;
+  }else{
+    // Vira um diário novo pra essa data (sem sobrescrever o diário já salvo na data antiga,
+    // já que ele fica com outro id do zero), mas mantém o efetivo e os equipamentos que já
+    // estavam preenchidos — eles costumam se repetir de um dia pro outro. Só o que é
+    // específico do dia (atividades, fotos, comentários etc.) começa em branco.
+    rascunho=Object.assign(criarRascunhoVazio(),{
+      data:novaData,
+      efetivo:JSON.parse(JSON.stringify(rascunho.efetivo||{})),
+      equip:JSON.parse(JSON.stringify(rascunho.equip||{}))
+    });
+    preencherFormRascunho();
+  }
 }else{
   rascunho.data=novaData;
 }
