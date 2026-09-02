@@ -490,7 +490,7 @@ btn.classList.add('on');
 document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
 document.getElementById('panel-'+nome).classList.add('on');
 document.getElementById('content-visualizar').style.display='none';
-if(nome!=='historico')document.getElementById('content-historico').style.display='block';
+document.getElementById('content-historico').style.display='block';
 if(nome==='historico')renderHistorico();
 if(nome==='config')preencherFormConfig();
 }
