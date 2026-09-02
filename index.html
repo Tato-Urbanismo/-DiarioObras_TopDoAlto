@@ -1368,6 +1368,11 @@ if(!existente&&rascunho.id){
 salvarRascunho();
 atualizarCalculosData();
 }
+function _voltarParaNovoDiario(){
+rascunho=criarRascunhoVazio();
+preencherFormRascunho();
+atualizarCalculosData(true);
+}
 function salvarDiario(){
 rascunho.numero=calcularDias(rascunho.data).numero;
 var idx=DIARIOS.findIndex(function(d){return d.id===rascunho.id;});
@@ -1382,15 +1387,19 @@ document.getElementById('nd-numero').value=rascunho.numero;
 var salvarInd=document.getElementById('save-ind');
 if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){
   alert('Diário nº '+rascunho.numero+' salvo com sucesso!');
+  _voltarParaNovoDiario();
   return;
 }
 if(salvarInd){salvarInd.textContent='enviando PDF pro Drive...';salvarInd.style.color='var(--gold)';}
 _salvarPdfDriveAutomatico(function(ano,mesPasta){
   if(salvarInd){salvarInd.textContent='salvo + PDF no Drive';salvarInd.style.color='var(--green2)';}
   alert('Diário nº '+rascunho.numero+' salvo com sucesso, e o PDF já subiu pro Drive (pasta: '+ano+' / '+mesPasta+')!');
+  _voltarParaNovoDiario();
 },function(msg){
   if(salvarInd){salvarInd.textContent='salvo (PDF falhou)';salvarInd.style.color='var(--gold)';}
   alert('Diário nº '+rascunho.numero+' salvo com sucesso!\n\nMas não consegui subir o PDF pro Drive agora: '+msg+'\nVocê pode tentar de novo pela tela de Visualizar/Imprimir.');
+  // Não limpa o formulário aqui de propósito: o diário continua em "rascunho" pra o botão
+  // "Visualizar/Imprimir" (e o reenvio pro Drive por ele) continuar funcionando nesse diário.
 });
 }
 // Botão temporário: salva o diário no banco normalmente, mas SEM gerar/enviar o PDF pro Drive.
@@ -1410,6 +1419,7 @@ document.getElementById('nd-numero').value=rascunho.numero;
 var salvarInd=document.getElementById('save-ind');
 if(salvarInd){salvarInd.textContent='salvo (sem Drive)';salvarInd.style.color='var(--muted)';}
 alert('Diário nº '+rascunho.numero+' salvo com sucesso (sem enviar pro Drive).');
+_voltarParaNovoDiario();
 }
 function _salvarPdfDriveAutomatico(onSucesso,onErro){
 _garantirLibsPdf(function(){
