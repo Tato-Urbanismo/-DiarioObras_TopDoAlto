@@ -2002,11 +2002,57 @@ return _driveApiFetch(url).then(function(data){
 });
 }
 var PASTA_RAIZ_DRIVE_ID='13aK8A3eYPQEq1CsGPhHFTCRwxcbVj5Tu';
+// Roda "promise"; se ela não terminar dentro de "ms" milissegundos, resolve com
+// "valorPadrao" em vez de ficar esperando pra sempre (a promise original continua
+// rodando em segundo plano, mas deixamos de esperar por ela).
+function _comLimiteDeTempo(promise,ms,valorPadrao){
+var jaResolveu=false;
+return new Promise(function(resolve){
+  var idTimeout=setTimeout(function(){
+    if(jaResolveu)return;
+    jaResolveu=true;
+    resolve(valorPadrao);
+  },ms);
+  promise.then(function(v){
+    if(jaResolveu)return;
+    jaResolveu=true;
+    clearTimeout(idTimeout);
+    resolve(v);
+  }).catch(function(){
+    if(jaResolveu)return;
+    jaResolveu=true;
+    clearTimeout(idTimeout);
+    resolve(valorPadrao);
+  });
+});
+}
 // Antes de criar o PDF, procura se já existe um arquivo com esse nome nessa pasta do
 // mês (por exemplo: reenvio manual de um diário já enviado antes, ou uma tentativa
 // anterior que só falhou em avisar o app do sucesso). Se existir, SUBSTITUI o conteúdo
 // dele em vez de criar um arquivo novo — evita duplicar o mesmo diário no Drive.
+// A busca tem um limite de 8s: se demorar mais que isso (ou falhar), assume que não
+// achou nada e segue criando um arquivo novo — o comportamento antigo, já comprovado —
+// em vez de deixar o envio travado esperando pra sempre. E o processo inteiro tem um
+// limite de 25s como rede de segurança final, pra nunca mais travar indefinidamente.
 function _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,onSucesso,onErro){
+var terminou=false;
+var idTimeoutGeral=setTimeout(function(){
+  if(terminou)return;
+  terminou=true;
+  if(onErro)onErro('Erro ao salvar no Drive: demorou demais pra responder (mais de 25s). Os dados do diário já estão salvos; tenta reenviar o PDF em alguns segundos pela tela de Visualizar/Imprimir.');
+},25000);
+function finalizarSucesso(){
+  if(terminou)return;
+  terminou=true;
+  clearTimeout(idTimeoutGeral);
+  if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo);
+}
+function finalizarErro(msg){
+  if(terminou)return;
+  terminou=true;
+  clearTimeout(idTimeoutGeral);
+  if(onErro)onErro(msg);
+}
 Promise.resolve(PASTA_RAIZ_DRIVE_ID).then(function(raizId){
   return _encontrarOuCriarPastaDrive(ano,raizId);
 }).then(function(anoId){
@@ -2014,7 +2060,7 @@ Promise.resolve(PASTA_RAIZ_DRIVE_ID).then(function(raizId){
 }).then(function(mesId){
   var q="name='"+nomeArquivo.replace(/'/g,"\\'")+"' and '"+mesId+"' in parents and trashed=false";
   var urlBusca='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name)';
-  return _driveApiFetch(urlBusca).then(function(data){
+  return _comLimiteDeTempo(_driveApiFetch(urlBusca),8000,{files:[]}).then(function(data){
     var existenteId=(data.files&&data.files.length)?data.files[0].id:null;
     var form=new FormData();
     if(!existenteId){
@@ -2033,9 +2079,9 @@ Promise.resolve(PASTA_RAIZ_DRIVE_ID).then(function(raizId){
   });
 }).then(function(resp){
   if(!resp.ok)throw new Error('Falha ao enviar pro Drive (HTTP '+resp.status+')');
-  if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo);
+  finalizarSucesso();
 }).catch(function(e){
-  if(onErro)onErro('Erro ao salvar no Drive: '+e.message);
+  finalizarErro('Erro ao salvar no Drive: '+e.message);
 });
 }
 
