@@ -504,34 +504,46 @@ function abrirModal(id){document.getElementById(id).style.display='flex';}
 
 // ================== PERSISTÊNCIA ==================
 var _cargaInicialOk=false;
-// Retorna uma Promise que NUNCA rejeita — sempre resolve com {ok:true} quando o
-// diário realmente foi gravado no banco (diarios/lista), ou {ok:false,motivo} quando
-// não deu (ficou só salvo neste computador). Assim quem chama salvar() sem se importar
-// com o resultado (a maioria das telas) continua funcionando igual, e quem PRECISA saber
-// se realmente sincronizou (salvarDiario/salvarDiarioSemDrive) consegue checar de verdade
-// em vez de confiar só no PDF do Drive ter subido (as duas coisas são independentes).
+// Cada diário vive no seu PRÓPRIO documento (coleção "diarios_itens", um documento por
+// diário, id = diario.id) — não é mais tudo guardado junto num documento gigante só. Isso
+// significa que salvar UM diário sempre grava só ele (poucos KB), em vez de reenviar o
+// histórico inteiro (que só cresce) toda vez — bem mais rápido e confiável com internet
+// fraca. "salvar()" cuida só de config/rascunho (pequenos, chamados o tempo todo por
+// dezenas de telas); quem grava um diário de verdade usa "_salvarUmDiario".
+function _diarioLeve(d){
+var copia=JSON.parse(JSON.stringify(d));
+if(copia.fotos&&copia.fotos.length){
+  copia.fotos=copia.fotos.map(function(f){return {legenda:f.legenda||'',temFoto:true};});
+}
+return copia;
+}
+// Retorna uma Promise que NUNCA rejeita — sempre resolve com {ok:true} quando as
+// configurações/rascunho realmente foram gravados no banco, ou {ok:false,motivo} quando
+// não deu (ficou só salvo neste computador). Não mexe nos diários — quem precisa gravar
+// um diário específico usa _salvarUmDiario, que é o que realmente importa saber se
+// sincronizou de verdade (salvarDiario/salvarDiarioSemDrive dependem disso, em vez de
+// confiar só no PDF do Drive ter subido — as duas coisas são independentes).
 function salvar(){
 try{localStorage.setItem(STORAGE_KEY,JSON.stringify({config:CONFIG,diarios:DIARIOS,rascunho:rascunho}));}catch(e){}
 db.collection('obra').doc('config').set(CONFIG).catch(function(){});
-db.collection('obra').doc('rascunho').set(rascunho).catch(function(){});
-if(DIARIOS.length===0&&!_cargaInicialOk){
-  var elAviso=document.getElementById('save-ind');
-  if(elAviso){elAviso.textContent='aguardando carregar diários...';elAviso.style.color='var(--gold)';}
-  return Promise.resolve({ok:false,motivo:'aguardando carregar diários'});
+return db.collection('obra').doc('rascunho').set(rascunho)
+.then(function(){
+  var el=document.getElementById('save-ind');if(el){el.textContent='sincronizado';el.style.color='var(--green2)';}
+  return {ok:true};
+})
+.catch(function(erro){
+  var el=document.getElementById('save-ind');if(el){el.textContent='salvo local';el.style.color='var(--gold)';}
+  return {ok:false,motivo:(erro&&erro.message)||String(erro)};
+});
 }
-var diariosLeves=DIARIOS.map(function(d){
-  var copia=JSON.parse(JSON.stringify(d));
-  if(copia.fotos&&copia.fotos.length){
-    copia.fotos=copia.fotos.map(function(f){return {legenda:f.legenda||'',temFoto:true};});
-  }
-  return copia;
-});
-DIARIOS.forEach(function(d){
-  if(d.fotos&&d.fotos.length&&d.fotos[0].dataUrl){
-    _gravarFotosDiarioComChunks(d).catch(function(){});
-  }
-});
-return db.collection('diarios').doc('lista').set({itens:diariosLeves,ts:new Date().toISOString()})
+// Grava SÓ ESSE diário (um documento pequeno, só ele) — não toca em mais nada. Retorna
+// uma Promise que nunca rejeita, igual salvar(): {ok:true} confirmado, ou {ok:false,motivo}.
+function _salvarUmDiario(d){
+try{localStorage.setItem(STORAGE_KEY,JSON.stringify({config:CONFIG,diarios:DIARIOS,rascunho:rascunho}));}catch(e){}
+if(d.fotos&&d.fotos.length&&d.fotos[0].dataUrl){
+  _gravarFotosDiarioComChunks(d).catch(function(){});
+}
+return db.collection('diarios_itens').doc(d.id).set(_diarioLeve(d))
 .then(function(){
   var el=document.getElementById('save-ind');if(el){el.textContent='sincronizado';el.style.color='var(--green2)';}
   return {ok:true};
@@ -735,19 +747,44 @@ var _timerCarregando=setInterval(function(){
 },300);
 Promise.all([
   db.collection('obra').doc('config').get().catch(function(){return null;}),
-  db.collection('diarios').doc('lista').get().catch(function(){return null;}),
-  db.collection('obra').doc('rascunho').get().catch(function(){return null;})
+  db.collection('diarios_itens').get().catch(function(){return null;}),
+  db.collection('obra').doc('rascunho').get().catch(function(){return null;}),
+  db.collection('diarios').doc('lista').get().catch(function(){return null;}) // formato antigo (uma migração automática usa isso se precisar)
 ]).then(function(resultados){
   clearInterval(_timerCarregando);
   var _t1=performance.now();
   console.log('[Diagnóstico] Firestore respondeu em '+((_t1-_t0)/1000).toFixed(2)+'s');
-  var cdoc=resultados[0],ddoc=resultados[1],rdoc=resultados[2];
-  if(!cdoc&&!ddoc&&!rdoc){carregarLocal();return;}
+  var cdoc=resultados[0],itensSnap=resultados[1],rdoc=resultados[2],ddocAntigo=resultados[3];
+  if(!cdoc&&!itensSnap&&!rdoc&&!ddocAntigo){carregarLocal();return;}
   if(cdoc&&cdoc.exists)CONFIG=Object.assign(CONFIG,cdoc.data());
-  if(ddoc&&ddoc.exists&&ddoc.data().itens)DIARIOS=ddoc.data().itens;
+  var diariosNovoFormato=[];
+  if(itensSnap&&itensSnap.docs){
+    itensSnap.docs.forEach(function(doc){diariosNovoFormato.push(doc.data());});
+  }
+  if(diariosNovoFormato.length){
+    DIARIOS=diariosNovoFormato;
+  }else if(ddocAntigo&&ddocAntigo.exists&&ddocAntigo.data()&&ddocAntigo.data().itens&&ddocAntigo.data().itens.length){
+    // Ainda no formato antigo (tudo num documento só) — usa esses dados agora, e já
+    // aproveita pra migrar cada um pro documento próprio dele em segundo plano, sem
+    // travar o carregamento (da próxima vez, a coleção diarios_itens já não estará
+    // mais vazia, e essa migração nem roda de novo).
+    DIARIOS=ddocAntigo.data().itens;
+    _migrarDiariosParaDocumentosIndividuais(DIARIOS);
+  }
   if(rdoc&&rdoc.exists&&rdoc.data()&&rdoc.data().data===hoje())rascunho=rdoc.data();
   finalizarCarregamento('online ('+((performance.now()-_t0)/1000).toFixed(1)+'s)');
 }).catch(function(){clearInterval(_timerCarregando);carregarLocal();});
+}
+// Migração automática, de segurança: copia cada diário do formato antigo (todos juntos
+// num documento só) pro formato novo (um documento próprio por diário). Não apaga nada do
+// formato antigo — só copia. Roda sozinha quando alguém abre o app e ainda não tem nada
+// no formato novo; depois disso não roda mais (a coleção diarios_itens já não está vazia).
+function _migrarDiariosParaDocumentosIndividuais(itens){
+Promise.all(itens.map(function(d){
+  return db.collection('diarios_itens').doc(d.id).set(_diarioLeve(d)).catch(function(){});
+})).then(function(){
+  console.log('[Migração] '+itens.length+' diário(s) migrado(s) pra documentos individuais.');
+});
 }
 function carregarLocal(){
 try{
@@ -1385,7 +1422,15 @@ rascunho=criarRascunhoVazio();
 preencherFormRascunho();
 atualizarCalculosData(true);
 }
+// Enquanto isso for true, avisa o navegador pra perguntar antes de fechar/recarregar a
+// aba — evita que alguém feche a página achando que "travou" bem no meio de salvar,
+// perdendo um diário que ainda não tinha terminado de gravar (já aconteceu antes).
+var _salvandoAgora=false;
+window.addEventListener('beforeunload',function(e){
+if(_salvandoAgora){e.preventDefault();e.returnValue='Ainda está salvando o diário. Se sair agora, pode perder os dados.';return e.returnValue;}
+});
 function salvarDiario(){
+_salvandoAgora=true;
 rascunho.numero=calcularDias(rascunho.data).numero;
 var idx=DIARIOS.findIndex(function(d){return d.id===rascunho.id;});
 if(idx>=0){
@@ -1394,26 +1439,32 @@ if(idx>=0){
   rascunho.id=gerarId();
   DIARIOS.push(JSON.parse(JSON.stringify(rascunho)));
 }
+var diarioParaSalvar=idx>=0?DIARIOS[idx]:DIARIOS[DIARIOS.length-1];
 var salvarInd=document.getElementById('save-ind');
 if(salvarInd){salvarInd.textContent='salvando...';salvarInd.style.color='var(--gold)';}
-salvar().then(function(status){
+salvar(); // fire-and-forget: config/rascunho (pequenos, não atrasam o diário)
+_salvarUmDiario(diarioParaSalvar).then(function(status){
 document.getElementById('nd-numero').value=rascunho.numero;
 if(!status.ok){
+  _salvandoAgora=false;
   if(salvarInd){salvarInd.textContent='FALHOU AO SALVAR';salvarInd.style.color='var(--red)';}
   alert('ATENÇÃO: o diário nº '+rascunho.numero+' NÃO foi salvo no banco de dados agora (ficou salvo só neste computador, e o PDF NÃO foi enviado pro Drive). Isso costuma ser a internet ou alguma proteção do navegador travando.\n\nOs dados continuam preenchidos aqui — tenta clicar em "Salvar Diário do Dia" de novo em alguns segundos, sem fechar essa aba.');
   return;
 }
 if(GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0){
+  _salvandoAgora=false;
   alert('Diário nº '+rascunho.numero+' salvo com sucesso!');
   _voltarParaNovoDiario();
   return;
 }
 if(salvarInd){salvarInd.textContent='enviando PDF pro Drive...';salvarInd.style.color='var(--gold)';}
 _salvarPdfDriveAutomatico(function(ano,mesPasta){
+  _salvandoAgora=false;
   if(salvarInd){salvarInd.textContent='salvo + PDF no Drive';salvarInd.style.color='var(--green2)';}
   alert('Diário nº '+rascunho.numero+' salvo com sucesso, e o PDF já subiu pro Drive (pasta: '+ano+' / '+mesPasta+')!');
   _voltarParaNovoDiario();
 },function(msg){
+  _salvandoAgora=false;
   if(salvarInd){salvarInd.textContent='salvo (PDF falhou)';salvarInd.style.color='var(--gold)';}
   alert('Diário nº '+rascunho.numero+' salvo com sucesso!\n\nMas não consegui subir o PDF pro Drive agora: '+msg+'\nVocê pode tentar de novo pela tela de Visualizar/Imprimir.');
   // Não limpa o formulário aqui de propósito: o diário continua em "rascunho" pra o botão
@@ -1425,6 +1476,7 @@ _salvarPdfDriveAutomatico(function(ano,mesPasta){
 // Útil pra preencher os diários antes de ter as fotos prontas (evita mandar PDF incompleto pro Drive).
 // Depois de importar as fotos pela ferramenta, use o envio manual em Ferramentas > Enviar Diários para o Drive.
 function salvarDiarioSemDrive(){
+_salvandoAgora=true;
 rascunho.numero=calcularDias(rascunho.data).numero;
 var idx=DIARIOS.findIndex(function(d){return d.id===rascunho.id;});
 if(idx>=0){
@@ -1433,15 +1485,19 @@ if(idx>=0){
   rascunho.id=gerarId();
   DIARIOS.push(JSON.parse(JSON.stringify(rascunho)));
 }
+var diarioParaSalvar=idx>=0?DIARIOS[idx]:DIARIOS[DIARIOS.length-1];
 var salvarInd=document.getElementById('save-ind');
 if(salvarInd){salvarInd.textContent='salvando...';salvarInd.style.color='var(--gold)';}
-salvar().then(function(status){
+salvar(); // fire-and-forget: config/rascunho (pequenos, não atrasam o diário)
+_salvarUmDiario(diarioParaSalvar).then(function(status){
 document.getElementById('nd-numero').value=rascunho.numero;
 if(!status.ok){
+  _salvandoAgora=false;
   if(salvarInd){salvarInd.textContent='FALHOU AO SALVAR';salvarInd.style.color='var(--red)';}
   alert('ATENÇÃO: o diário nº '+rascunho.numero+' NÃO foi salvo no banco de dados agora (ficou salvo só neste computador). Isso costuma ser a internet ou alguma proteção do navegador travando.\n\nOs dados continuam preenchidos aqui — tenta clicar em "Salvar sem Drive" de novo em alguns segundos, sem fechar essa aba.');
   return;
 }
+_salvandoAgora=false;
 if(salvarInd){salvarInd.textContent='salvo (sem Drive)';salvarInd.style.color='var(--muted)';}
 alert('Diário nº '+rascunho.numero+' salvo com sucesso (sem enviar pro Drive).');
 _voltarParaNovoDiario();
@@ -1535,6 +1591,7 @@ var d=DIARIOS.find(function(x){return x.id===id;});
 if(!d)return;
 if(!confirm('Excluir o diário nº '+d.numero+' ('+fmtData(d.data)+')? Essa ação não pode ser desfeita.'))return;
 DIARIOS=DIARIOS.filter(function(x){return x.id!==id;});
+db.collection('diarios_itens').doc(id).delete().catch(function(){});
 salvar();
 renderHistorico();
 }
@@ -1756,18 +1813,12 @@ reader.readAsDataURL(file);
 function _ferrSalvarFotosDiarioSeguro(d){
 return _gravarFotosDiarioComChunks(d);
 }
-// Grava só a lista leve (sem dataUrl) — usado no lugar de salvar(), que dispara uma
-// gravação por diário de uma vez só e pode sobrecarregar o Firestore em importações grandes.
-function _ferrSalvarListaLeve(){
+// Grava só os diários que essa importação realmente tocou (um documento pequeno por
+// diário) — bem mais leve do que reescrever o histórico inteiro, principalmente numa
+// importação grande com centenas de diários que não mudaram nada.
+function _ferrSalvarListaLeve(diariosTocados){
 try{localStorage.setItem(STORAGE_KEY,JSON.stringify({config:CONFIG,diarios:DIARIOS,rascunho:rascunho}));}catch(e){}
-var diariosLeves=DIARIOS.map(function(d){
-var copia=JSON.parse(JSON.stringify(d));
-if(copia.fotos&&copia.fotos.length){
-copia.fotos=copia.fotos.map(function(f){return {legenda:f.legenda||'',temFoto:true};});
-}
-return copia;
-});
-return db.collection('diarios').doc('lista').set({itens:diariosLeves,ts:new Date().toISOString()});
+return Promise.all(diariosTocados.map(function(d){return _salvarUmDiario(d);}));
 }
 var _ferrImportEmAndamento=false;
 // Além do mapa da planilha original, reconhece também fotos cujo nome já traz a data
@@ -1800,10 +1851,11 @@ var progresso=document.getElementById('ferr-import-progress');
 var logEl=document.getElementById('ferr-import-log');
 logEl.style.display='block';logEl.textContent='';
 var totalAdded=0,totalSkipped=0,totalErrors=0,errList=[],missingDiario=[],falhasPersistencia=[];
+var diariosTocados={};
 function log(msg){logEl.textContent+=msg+'\n';logEl.scrollTop=logEl.scrollHeight;}
 async function processarData(i){
 if(i>=dates.length){
-await _ferrSalvarListaLeve().catch(function(){});
+await _ferrSalvarListaLeve(Object.keys(diariosTocados).map(function(id){return diariosTocados[id];})).catch(function(){});
 _ferrImportEmAndamento=false;
 btn.disabled=false;btn.textContent='⬆ Iniciar Importação';
 progresso.textContent='Concluído!';
@@ -1831,6 +1883,7 @@ if(j>=pendentes.length){
 if(pendentes.length===0){processarData(i+1);return;}
 progresso.textContent='Salvando '+date+' ('+(i+1)+' de '+dates.length+')...';
 _ferrSalvarFotosDiarioSeguro(d).then(function(){
+diariosTocados[d.id]=d;
 log('✓ '+date+': '+pendentes.length+' foto(s) salva(s).');
 processarData(i+1);
 }).catch(function(err){
@@ -1972,7 +2025,16 @@ html2canvas(conteudo,{scale:2,useCORS:true,backgroundColor:'#ffffff'}).then(func
   var ano=partes[0];
   var mesPasta=_nomesMeses[parseInt(partes[1],10)]||partes[1];
   var nomeArquivo='Diario_'+numeroRef+'_'+dataRef+'.pdf';
-  _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,onSucesso,onErro);
+  _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,diarioRef.driveFileId,function(anoOk,mesOk,nomeOk,fileId){
+    // Guarda o ID do arquivo do Drive no diário (no registro real de DIARIOS, não só na
+    // referência que recebemos), pra da próxima vez reenviar direto sem procurar nada.
+    if(fileId){
+      diarioRef.driveFileId=fileId;
+      var alvo=DIARIOS.find(function(dd){return dd.id===diarioRef.id;});
+      if(alvo){alvo.driveFileId=fileId;_salvarUmDiario(alvo).catch(function(){});}
+    }
+    if(onSucesso)onSucesso(anoOk,mesOk,nomeOk);
+  },onErro);
 }).catch(function(e){
   conteudo.style.transform=transformOriginal;
   if(onErro)onErro('Erro ao gerar o PDF: '+e.message);
@@ -2026,32 +2088,62 @@ return new Promise(function(resolve){
   });
 });
 }
-// Antes de criar o PDF, procura se já existe um arquivo com esse nome nessa pasta do
-// mês (por exemplo: reenvio manual de um diário já enviado antes, ou uma tentativa
-// anterior que só falhou em avisar o app do sucesso). Se existir, SUBSTITUI o conteúdo
-// dele em vez de criar um arquivo novo — evita duplicar o mesmo diário no Drive.
-// A busca tem um limite de 8s: se demorar mais que isso (ou falhar), assume que não
-// achou nada e segue criando um arquivo novo — o comportamento antigo, já comprovado —
-// em vez de deixar o envio travado esperando pra sempre. E o processo inteiro tem um
-// limite de 25s como rede de segurança final, pra nunca mais travar indefinidamente.
-function _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,onSucesso,onErro){
+// Se já sabemos o ID do arquivo desse diário no Drive (de um envio anterior, guardado no
+// próprio diário), pula direto pra SUBSTITUIR esse arquivo — sem procurar nada, então é
+// rápido sempre, mesmo num reenvio. Só na primeira vez (quando ainda não tem esse ID) é
+// que precisa achar/criar as pastas Ano/Mês e procurar se já existe um arquivo com esse
+// nome (evita duplicar caso a página tenha sido recarregada antes de guardar o ID). Essa
+// busca tem um limite de 8s: se demorar mais que isso (ou falhar), assume que não achou
+// nada e segue criando um arquivo novo, em vez de deixar o envio travado esperando pra
+// sempre. E o processo inteiro tem um limite de 25s como rede de segurança final, pra
+// nunca mais travar indefinidamente. onSucesso recebe também o ID do arquivo usado, pra
+// quem chamou guardar e reaproveitar da próxima vez (envio rápido, sem busca nenhuma).
+function _subirPdfNoDrive(pdfBlob,ano,mesPasta,nomeArquivo,driveFileIdExistente,onSucesso,onErro){
 var terminou=false;
 var idTimeoutGeral=setTimeout(function(){
   if(terminou)return;
   terminou=true;
   if(onErro)onErro('Erro ao salvar no Drive: demorou demais pra responder (mais de 25s). Os dados do diário já estão salvos; tenta reenviar o PDF em alguns segundos pela tela de Visualizar/Imprimir.');
 },25000);
-function finalizarSucesso(){
+function finalizarSucesso(fileId){
   if(terminou)return;
   terminou=true;
   clearTimeout(idTimeoutGeral);
-  if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo);
+  if(onSucesso)onSucesso(ano,mesPasta,nomeArquivo,fileId);
 }
 function finalizarErro(msg){
   if(terminou)return;
   terminou=true;
   clearTimeout(idTimeoutGeral);
   if(onErro)onErro(msg);
+}
+function enviarConteudo(fileId,parentsOuNull){
+  var form=new FormData();
+  if(!fileId){
+    var metadata={name:nomeArquivo,parents:parentsOuNull};
+    form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));
+  }
+  form.append('file',pdfBlob);
+  var url=fileId
+    ?'https://www.googleapis.com/upload/drive/v3/files/'+fileId+'?uploadType=multipart'
+    :'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+  return fetch(url,{
+    method:fileId?'PATCH':'POST',
+    headers:{'Authorization':'Bearer '+_accessTokenDrive},
+    body:form
+  }).then(function(resp){
+    if(!resp.ok)throw new Error('Falha ao enviar pro Drive (HTTP '+resp.status+')');
+    if(fileId)return fileId;
+    return resp.json().then(function(dados){return dados&&dados.id;});
+  });
+}
+if(driveFileIdExistente){
+  enviarConteudo(driveFileIdExistente,null).then(function(fileId){
+    finalizarSucesso(fileId);
+  }).catch(function(e){
+    finalizarErro('Erro ao salvar no Drive: '+e.message);
+  });
+  return;
 }
 Promise.resolve(PASTA_RAIZ_DRIVE_ID).then(function(raizId){
   return _encontrarOuCriarPastaDrive(ano,raizId);
@@ -2062,24 +2154,10 @@ Promise.resolve(PASTA_RAIZ_DRIVE_ID).then(function(raizId){
   var urlBusca='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name)';
   return _comLimiteDeTempo(_driveApiFetch(urlBusca),8000,{files:[]}).then(function(data){
     var existenteId=(data.files&&data.files.length)?data.files[0].id:null;
-    var form=new FormData();
-    if(!existenteId){
-      var metadata={name:nomeArquivo,parents:[mesId]};
-      form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));
-    }
-    form.append('file',pdfBlob);
-    var url=existenteId
-      ?'https://www.googleapis.com/upload/drive/v3/files/'+existenteId+'?uploadType=multipart'
-      :'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-    return fetch(url,{
-      method:existenteId?'PATCH':'POST',
-      headers:{'Authorization':'Bearer '+_accessTokenDrive},
-      body:form
-    });
+    return enviarConteudo(existenteId,[mesId]);
   });
-}).then(function(resp){
-  if(!resp.ok)throw new Error('Falha ao enviar pro Drive (HTTP '+resp.status+')');
-  finalizarSucesso();
+}).then(function(fileId){
+  finalizarSucesso(fileId);
 }).catch(function(e){
   finalizarErro('Erro ao salvar no Drive: '+e.message);
 });
