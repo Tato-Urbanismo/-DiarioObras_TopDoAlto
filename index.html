@@ -546,14 +546,18 @@ function sincronizarAgora(){
 var btn=document.getElementById('btn-sincronizar');
 if(btn){btn.disabled=true;btn.querySelector('span').textContent='Sincronizando...';}
 _tentarSincronizarPendentes().then(function(resultados){
-  var falhas=resultados.filter(function(r){return !r.ok;}).length;
-  var sucesso=resultados.length-falhas;
+  var falhados=resultados.filter(function(r){return !r.ok;});
+  var sucesso=resultados.length-falhados.length;
   if(btn)btn.disabled=false;
   atualizarBadgeSincronizar();
-  if(falhas===0){
+  if(falhados.length===0){
     alert('Tudo sincronizado! ('+sucesso+' item(ns) confirmado(s) no banco.)');
   }else{
-    alert('Sincronizado '+sucesso+' de '+resultados.length+' item(ns). '+falhas+' ainda não conseguiu(ram) conectar — tenta de novo em alguns segundos.');
+    // Mostra o motivo de verdade (em vez de só "não deu"), pra dar pra identificar se é
+    // falta de internet, bloqueio de firewall/antivírus, ou outra coisa específica.
+    var motivos=falhados.map(function(r){return (r.diarioNumero?('nº'+r.diarioNumero+': '):'')+r.motivo;});
+    var motivosUnicos=motivos.filter(function(m,i){return motivos.indexOf(m)===i;});
+    alert('Sincronizado '+sucesso+' de '+resultados.length+' item(ns). '+falhados.length+' ainda não conseguiu(ram) conectar:\n\n'+motivosUnicos.join('\n')+'\n\nTenta de novo em alguns segundos. Se continuar, me manda esse texto.');
   }
 });
 }
@@ -581,16 +585,17 @@ try{localStorage.setItem(STORAGE_KEY,JSON.stringify({config:CONFIG,diarios:DIARI
 db.collection('obra').doc('config').set(CONFIG).catch(function(){});
 return db.collection('obra').doc('rascunho').set(rascunho)
 .then(function(){
-  var el=document.getElementById('save-ind');if(el){el.textContent='sincronizado';el.style.color='var(--green2)';}
+  var el=document.getElementById('save-ind');if(el){el.textContent='sincronizado';el.style.color='var(--green2)';el.title='';}
   _pendenteConfigRascunho=false;
   atualizarBadgeSincronizar();
   return {ok:true};
 })
 .catch(function(erro){
-  var el=document.getElementById('save-ind');if(el){el.textContent='salvo local';el.style.color='var(--gold)';}
+  var motivo=(erro&&erro.message)||String(erro);
+  var el=document.getElementById('save-ind');if(el){el.textContent='salvo local';el.style.color='var(--gold)';el.title='Não conseguiu gravar no banco: '+motivo;}
   _pendenteConfigRascunho=true;
   atualizarBadgeSincronizar();
-  return {ok:false,motivo:(erro&&erro.message)||String(erro)};
+  return {ok:false,motivo:motivo};
 });
 }
 // Grava SÓ ESSE diário (um documento pequeno, só ele) — não toca em mais nada. Retorna
@@ -602,16 +607,17 @@ if(d.fotos&&d.fotos.length&&d.fotos[0].dataUrl){
 }
 return db.collection('diarios_itens').doc(d.id).set(_diarioLeve(d))
 .then(function(){
-  var el=document.getElementById('save-ind');if(el){el.textContent='sincronizado';el.style.color='var(--green2)';}
+  var el=document.getElementById('save-ind');if(el){el.textContent='sincronizado';el.style.color='var(--green2)';el.title='';}
   delete _pendentesDiarios[d.id];
   atualizarBadgeSincronizar();
   return {ok:true};
 })
 .catch(function(erro){
-  var el=document.getElementById('save-ind');if(el){el.textContent='salvo local';el.style.color='var(--gold)';}
+  var motivo=(erro&&erro.message)||String(erro);
+  var el=document.getElementById('save-ind');if(el){el.textContent='salvo local';el.style.color='var(--gold)';el.title='Não conseguiu gravar o diário nº'+d.numero+' no banco: '+motivo;}
   _pendentesDiarios[d.id]=d;
   atualizarBadgeSincronizar();
-  return {ok:false,motivo:(erro&&erro.message)||String(erro)};
+  return {ok:false,diarioNumero:d.numero,motivo:motivo};
 });
 }
 // Cada foto vira base64 (dataUrl), e o Firestore só aceita até 1.048.576 bytes por
@@ -2145,13 +2151,44 @@ var conteudo=document.getElementById('area-impressao').firstElementChild;
 if(!conteudo){alert('Abra a visualização do diário primeiro (botão Visualizar/Imprimir).');_resetarBotaoPdfDrive();return;}
 var diarioRef=_diarioVisualizandoId?(DIARIOS.find(function(d){return d.id===_diarioVisualizandoId;})||rascunho):rascunho;
 var btn=document.getElementById('btn-salvar-pdf-drive');
+// Esse botão é alcançado tanto a partir de um diário JÁ salvo (Histórico > Ver) quanto
+// direto do rascunho de hoje (Visualizar/Imprimir sem ter clicado em "Salvar Diário do
+// Dia" antes). Sem essa checagem, o segundo caso subia o PDF pro Drive normalmente (por
+// isso o PDF existia) mas NUNCA gravava o diário no banco — dava a entender que estava
+// tudo certo (o PDF existe, apareceu o aviso de sucesso), só que o diário nunca aparecia
+// no Histórico depois, porque nunca tinha sido salvo de verdade. Agora, se ainda não
+// estiver salvo, salva primeiro — o botão só gera/envia o PDF depois de confirmar isso.
+var jaSalvoNoBanco=diarioRef.id&&DIARIOS.some(function(d){return d.id===diarioRef.id;});
+if(!jaSalvoNoBanco){
+  if(btn){btn.disabled=true;btn.textContent='Salvando diário...';}
+  if(!diarioRef.id)diarioRef.id=gerarId();
+  diarioRef.numero=calcularDias(diarioRef.data).numero;
+  // Guarda uma CÓPIA em DIARIOS (mesmo padrão de salvarDiario()/salvarDiarioSemDrive()) —
+  // assim o rascunho continua livre pra ser editado sem mexer no que já foi pro banco.
+  var clone=JSON.parse(JSON.stringify(diarioRef));
+  DIARIOS.push(clone);
+  _salvarUmDiario(clone).then(function(status){
+    if(!status.ok){
+      DIARIOS=DIARIOS.filter(function(d){return d!==clone;}); // sem registro "fantasma" de algo que não confirmou no banco
+      _resetarBotaoPdfDrive();
+      alert('ATENÇÃO: o diário nº '+clone.numero+' NÃO foi salvo no banco agora (sem internet ou alguma proteção travando). O PDF NÃO foi enviado.\n\nOs dados continuam preenchidos — tenta de novo em alguns segundos, ou usa o botão "💾 Salvar Diário do Dia" na aba Diário de Hoje.');
+      return;
+    }
+    _prosseguirComPdfDrive(conteudo,clone,true);
+  });
+  return;
+}
+_prosseguirComPdfDrive(conteudo,diarioRef,false);
+}
+function _prosseguirComPdfDrive(conteudo,diarioRef,acabouDeSalvar){
+var btn=document.getElementById('btn-salvar-pdf-drive');
 if(btn){btn.disabled=true;btn.textContent='Gerando PDF...';}
 _gerarEEnviarPdf(conteudo,diarioRef,function(ano,mesPasta){
   _resetarBotaoPdfDrive();
-  alert('PDF salvo no Drive! (pasta: '+ano+' / '+mesPasta+')');
+  alert((acabouDeSalvar?('Diário nº '+diarioRef.numero+' salvo, e o '):'O ')+'PDF já subiu pro Drive! (pasta: '+ano+' / '+mesPasta+')');
 },function(msg){
   _resetarBotaoPdfDrive();
-  alert(msg);
+  alert((acabouDeSalvar?('Diário nº '+diarioRef.numero+' foi salvo no banco, mas n'):'N')+'ão consegui subir o PDF pro Drive agora: '+msg);
 });
 }
 function _gerarEEnviarPdf(conteudo,diarioRef,onSucesso,onErro){
