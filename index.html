@@ -532,14 +532,20 @@ var n=Object.keys(_pendentesDiarios).length+(_pendenteConfigRascunho?1:0);
 el.textContent=n?'🔄 Sincronizar ('+n+')':'🔄 Sincronizar';
 el.parentElement.classList.toggle('pendente',!!n);
 }
-// Tenta regravar no banco tudo que ficou só salvo localmente até agora. Pode ser clicado
-// a qualquer momento (ex: depois de voltar a internet) — se não houver nada pendente, só
-// confirma que o rascunho/config atual está sincronizado (não tem efeito ruim nenhum).
+// Tenta regravar no banco tudo que ficou só salvo localmente até agora. Retorna uma
+// Promise com os resultados — quem chama decide se avisa o usuário ou fica quieto (usado
+// tanto pelo botão "Sincronizar" quanto pela tentativa automática ao abrir o app).
+function _tentarSincronizarPendentes(){
+var diariosPendentes=Object.keys(_pendentesDiarios).map(function(id){return _pendentesDiarios[id];});
+return Promise.all([salvar()].concat(diariosPendentes.map(function(d){return _salvarUmDiario(d);})));
+}
+// Clicado pelo usuário (botão "🔄 Sincronizar"). Pode ser clicado a qualquer momento (ex:
+// depois de voltar a internet) — se não houver nada pendente, só confirma que o rascunho/
+// config atual está sincronizado (não tem efeito ruim nenhum). Sempre avisa o resultado.
 function sincronizarAgora(){
 var btn=document.getElementById('btn-sincronizar');
 if(btn){btn.disabled=true;btn.querySelector('span').textContent='Sincronizando...';}
-var diariosPendentes=Object.keys(_pendentesDiarios).map(function(id){return _pendentesDiarios[id];});
-Promise.all([salvar()].concat(diariosPendentes.map(function(d){return _salvarUmDiario(d);}))).then(function(resultados){
+_tentarSincronizarPendentes().then(function(resultados){
   var falhas=resultados.filter(function(r){return !r.ok;}).length;
   var sucesso=resultados.length-falhas;
   if(btn)btn.disabled=false;
@@ -831,10 +837,43 @@ Promise.all([
     DIARIOS_LIXEIRA=[];
     _migrarDiariosParaDocumentosIndividuais(DIARIOS);
   }
+  // Se algum diário salvo neste navegador (localStorage) não aparece no que acabou de vir
+  // do banco — nem ativo, nem na lixeira — é sinal de que uma gravação anterior falhou e
+  // ficou só local. Sem isso, esse diário seria perdido de vez agora (substituído pelo que
+  // veio do banco, que nunca chegou a ter ele). Ele volta pro Histórico e fica marcado como
+  // pendente, pro botão "🔄 Sincronizar" (ou a tentativa automática logo abaixo) regravar.
+  var idsConhecidos={};
+  DIARIOS.forEach(function(d){idsConhecidos[d.id]=true;});
+  DIARIOS_LIXEIRA.forEach(function(d){idsConhecidos[d.id]=true;});
+  var recuperados=_recuperarPendentesLocais(idsConhecidos);
+  if(recuperados.length){
+    recuperados.forEach(function(d){DIARIOS.push(d);_pendentesDiarios[d.id]=d;});
+    console.log('[Recuperação] '+recuperados.length+' diário(s) que só existiam neste navegador (nunca confirmados no banco) foram recuperados e marcados como pendentes de sincronizar: '+recuperados.map(function(d){return 'nº'+d.numero+' ('+d.data+')';}).join(', '));
+  }
   if(rdoc&&rdoc.exists&&rdoc.data()&&rdoc.data().data===hoje())rascunho=rdoc.data();
   _purgarLixeiraAntiga();
   finalizarCarregamento('online ('+((performance.now()-_t0)/1000).toFixed(1)+'s)');
+  if(recuperados.length||_pendenteConfigRascunho){
+    // Tentativa automática e silenciosa: se a internet já estiver boa de novo, resolve
+    // sozinho sem precisar que alguém note o botão vermelho e clique.
+    _tentarSincronizarPendentes().catch(function(){});
+  }
 }).catch(function(){clearInterval(_timerCarregando);carregarLocal();});
+}
+// Lê o que ficou salvo neste navegador (localStorage) e devolve só os diários cujo id não
+// está em "idsConhecidos" (ou seja, o banco nunca confirmou ter recebido eles).
+function _recuperarPendentesLocais(idsConhecidos){
+var recuperados=[];
+try{
+  var s=localStorage.getItem(STORAGE_KEY);
+  if(s){
+    var l=JSON.parse(s);
+    (l.diarios||[]).forEach(function(d){
+      if(d&&d.id&&!idsConhecidos[d.id])recuperados.push(d);
+    });
+  }
+}catch(e){}
+return recuperados;
 }
 // Apaga de vez (agora sim, sem volta) qualquer diário que já está na lixeira há mais de
 // 30 dias — roda uma vez a cada carregamento do app, bem discreta, sem travar nem avisar
