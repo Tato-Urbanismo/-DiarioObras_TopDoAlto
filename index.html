@@ -47,6 +47,16 @@ body.modo-edicao #btn-modo-edicao{background:var(--gold);color:#fff;border-color
 body.modo-edicao #banner-edicao{display:flex}
 #banner-recuperacao{display:none;background:#ffe3e3;border:1px solid #c0392b;color:#6b1c1c;padding:8px 12px;font-size:11.5px;margin-bottom:10px;border-radius:3px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 body.modo-recuperacao #banner-recuperacao{display:flex}
+#recuperacao-pdf-painel{display:none;position:fixed;right:14px;top:90px;width:380px;height:70vh;background:#fff;border:2px solid #c0392b;border-radius:6px;box-shadow:0 4px 18px rgba(0,0,0,.3);z-index:60;flex-direction:column;overflow:hidden}
+body.modo-recuperacao.tem-pdf-recuperacao #recuperacao-pdf-painel{display:flex}
+#recuperacao-pdf-painel.minimizado{height:auto}
+#recuperacao-pdf-head{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#c0392b;color:#fff;font-size:11.5px;font-weight:700;flex-shrink:0}
+#recuperacao-pdf-iframe{flex:1;border:0;width:100%;background:#eee}
+#recuperacao-pdf-painel.minimizado #recuperacao-pdf-iframe,#recuperacao-pdf-painel.minimizado #recuperacao-ocr-status{display:none}
+#recuperacao-ocr-status{font-size:10.5px;color:#444;padding:7px 10px;border-top:1px solid #eee;max-height:140px;overflow:auto;flex-shrink:0;white-space:pre-wrap}
+.ocr-preenchido{background:#fff3cd!important}
+label.opcao.ocr-preenchido{background:#fff3cd;border-radius:3px;padding:1px 3px}
+@media(max-width:860px){#recuperacao-pdf-painel{left:10px;right:10px;width:auto;top:auto;bottom:10px;height:46vh}}
 .regua{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #c9962c;border-radius:4px;padding:4px 10px}
 .regua button{background:var(--ink);color:#fff;border:none;border-radius:3px;width:26px;height:26px;font-size:15px;font-weight:700;cursor:pointer;line-height:1}
 .regua span{font-size:11px;font-weight:700;min-width:38px;text-align:center}
@@ -150,6 +160,11 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 <div id="banner-recuperacao">
 <span>🔧 <b>Modo Recuperação</b> — preenchendo o diário de <b id="banner-recuperacao-data"></b> pra salvar direto no banco de dados (sem subir PDF pro Drive de novo).</span>
 <button class="btn btn-cancel" onclick="cancelarRecuperacaoDiario()">✕ Cancelar Recuperação</button>
+</div>
+<div id="recuperacao-pdf-painel" class="no-print">
+<div id="recuperacao-pdf-head"><span>📄 PDF original (conferência)</span><button class="fbtn" onclick="document.getElementById('recuperacao-pdf-painel').classList.toggle('minimizado')" title="Minimizar/expandir" style="color:#fff;border-color:#fff">↕</button></div>
+<iframe id="recuperacao-pdf-iframe"></iframe>
+<div id="recuperacao-ocr-status"></div>
 </div>
 
 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #2d7a40;padding:6px 0 16px;margin-bottom:18px">
@@ -346,8 +361,10 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Se um diário sumiu do <b>Histórico</b> mas o PDF dele já está no Google Drive (ex: apareceu "sucesso" mas o diário nunca ficou salvo), use esta ferramenta. Ela abre o formulário na data escolhida pra você preencher de novo olhando o PDF do Drive — com direito a anexar as fotos originais do computador/celular — e salva direto no banco de dados, sem subir PDF de novo.</p>
 <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
 <div><label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">Data do diário que sumiu</label><input type="date" id="ferr-recuperar-data" style="border:1px solid #999;border-radius:3px;padding:7px 9px;font-family:Arial,sans-serif;font-size:12px"></div>
+<div><label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">PDF do diário (opcional)</label><input type="file" id="ferr-recuperar-pdf" accept="application/pdf" style="font-size:11px"></div>
 <button class="btn btn-add" style="background:#c0392b" onclick="abrirFerramentaRecuperarDiario()">🔧 Abrir para Recuperação</button>
 </div>
+<p style="font-size:10.5px;color:var(--muted);margin-top:8px">Se escolher o PDF, o sistema tenta ler e preencher sozinho o que der (atividades, responsável, quantidades de efetivo/equipamento) — os campos preenchidos assim ficam destacados em amarelo pra você conferir. O PDF fica visível numa janela ao lado durante a conferência. Clima e sinistros não são preenchidos sozinhos — sempre confira e marque manualmente.</p>
 </div>
 
 <div class="sbar">📷 Importar Fotos da Planilha</div>
@@ -1691,6 +1708,13 @@ document.getElementById('btn-salvar-diario-dia').style.display='none';
 document.getElementById('btn-salvar-sem-drive').style.display='none';
 document.getElementById('btn-salvar-recuperado').style.display='inline-flex';
 window.scrollTo(0,0);
+var pdfInput=document.getElementById('ferr-recuperar-pdf');
+var arquivoPdf=pdfInput&&pdfInput.files&&pdfInput.files[0];
+if(arquivoPdf){
+  _iniciarPreviewEOcrPdf(arquivoPdf);
+}else{
+  document.body.classList.remove('tem-pdf-recuperacao');
+}
 }
 
 function cancelarRecuperacaoDiario(){
@@ -1703,12 +1727,358 @@ _modoRecuperacao=false;
 rascunho=_rascunhoAntesRecuperacao||criarRascunhoVazio();
 _rascunhoAntesRecuperacao=null;
 document.body.classList.remove('modo-recuperacao');
+document.body.classList.remove('tem-pdf-recuperacao');
+if(_recuperacaoPdfBlobUrl){URL.revokeObjectURL(_recuperacaoPdfBlobUrl);_recuperacaoPdfBlobUrl=null;}
+document.getElementById('recuperacao-pdf-iframe').src='about:blank';
+document.getElementById('recuperacao-ocr-status').innerHTML='';
 document.getElementById('btn-visualizar-imprimir').style.display='';
 document.getElementById('btn-salvar-diario-dia').style.display='';
 document.getElementById('btn-salvar-sem-drive').style.display='';
 document.getElementById('btn-salvar-recuperado').style.display='none';
 preencherFormRascunho();
 atualizarCalculosData(true);
+}
+
+// ===== Leitura automática (OCR) do PDF, dentro do Recuperar Diário Perdido =====
+// O PDF do diário é só uma imagem (um "print" da tela, sem texto embutido), então não dá
+// pra ler os campos dele com 100% de certeza. Esta leitura roda inteira no navegador
+// (pdf.js pra transformar a página do PDF numa imagem, Tesseract.js pra "ler" essa
+// imagem) e tenta preencher o que der: atividades, responsável e as quantidades de
+// efetivo/equipamento (comparando com os nomes já cadastrados). O clima (são
+// caixinhas marcadas) é decidido olhando se a região da caixinha ficou mais escura
+// (marcada) ou mais clara (vazia) perto de cada texto — também é só uma estimativa.
+// Sinistros não são preenchidos sozinhos. Por isso o PDF sempre aparece do lado pra
+// conferência, e cada campo preenchido automaticamente fica destacado em amarelo.
+var _recuperacaoPdfBlobUrl=null;
+var _libsOcrProntas=false,_libsOcrCarregando=false,_libsOcrFila=[];
+
+function _carregarScriptUnico(src){
+return new Promise(function(resolve,reject){
+  var s=document.createElement('script');
+  s.src=src;s.onload=resolve;s.onerror=reject;
+  document.head.appendChild(s);
+});
+}
+function _carregarScriptComFallback(urls){
+var p=Promise.reject();
+urls.forEach(function(url){
+  p=p.catch(function(){return _carregarScriptUnico(url);});
+});
+return p;
+}
+function _garantirLibsOcr(callback){
+if(_libsOcrProntas){callback();return;}
+_libsOcrFila.push(callback);
+if(_libsOcrCarregando)return;
+_libsOcrCarregando=true;
+Promise.all([
+  _carregarScriptComFallback([
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'
+  ]).then(function(){
+    if(window.pdfjsLib){
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  }),
+  _carregarScriptComFallback([
+    'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js',
+    'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+    'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js'
+  ])
+]).then(function(){
+  _libsOcrProntas=true;
+  var fila=_libsOcrFila;_libsOcrFila=[];
+  fila.forEach(function(cb){cb(true);});
+}).catch(function(){
+  _libsOcrCarregando=false;
+  var fila=_libsOcrFila;_libsOcrFila=[];
+  fila.forEach(function(cb){cb(false);});
+});
+}
+
+function _iniciarPreviewEOcrPdf(file){
+document.body.classList.add('tem-pdf-recuperacao');
+document.getElementById('recuperacao-pdf-painel').classList.remove('minimizado');
+var statusEl=document.getElementById('recuperacao-ocr-status');
+statusEl.textContent='Carregando o PDF...';
+if(_recuperacaoPdfBlobUrl)URL.revokeObjectURL(_recuperacaoPdfBlobUrl);
+_recuperacaoPdfBlobUrl=URL.createObjectURL(file);
+document.getElementById('recuperacao-pdf-iframe').src=_recuperacaoPdfBlobUrl;
+
+statusEl.textContent='Carregando leitura automática (pode levar alguns segundos, precisa de internet)...';
+_garantirLibsOcr(function(libsOk){
+  if(!libsOk){
+    statusEl.textContent='Não consegui carregar a leitura automática agora (precisa de internet). Sem problema — o PDF está aí do lado, preenche olhando ele.';
+    return;
+  }
+  _executarOcrDiario(file,statusEl).catch(function(err){
+    statusEl.textContent='Não consegui ler o PDF automaticamente ('+((err&&err.message)||err)+'). Preenche olhando o PDF ao lado mesmo.';
+  });
+});
+}
+
+function _normalizarTxtOcr(s){
+return (s||'').toUpperCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g,'')
+  .replace(/[^A-Z0-9 ]/g,' ')
+  .replace(/\s+/g,' ')
+  .trim();
+}
+
+function _lerDarknessRegiao(ctx,x0,y0,x1,y1){
+x0=Math.max(0,Math.round(x0));y0=Math.max(0,Math.round(y0));
+x1=Math.round(x1);y1=Math.round(y1);
+var w=Math.max(1,x1-x0),h=Math.max(1,y1-y0);
+try{
+  var img=ctx.getImageData(x0,y0,w,h).data;
+  var soma=0,n=0;
+  for(var i=0;i<img.length;i+=4){soma+=(img[i]+img[i+1]+img[i+2])/3;n++;}
+  return n?soma/n:255;
+}catch(e){return 255;}
+}
+
+// Acha, na sequência de palavras do OCR, uma ocorrência da frase (lida palavra por
+// palavra, tolerando erro de OCR com comparação por prefixo) e devolve a posição
+// (bbox) de cada ocorrência encontrada.
+function _acharOcorrenciasFrase(frase,palavras){
+var alvo=_normalizarTxtOcr(frase).split(' ').filter(Boolean);
+if(!alvo.length)return[];
+var achados=[];
+for(var i=0;i+alvo.length<=palavras.length;i++){
+  var ok=true;
+  for(var j=0;j<alvo.length;j++){
+    var w=palavras[i+j];
+    var wn=w?_normalizarTxtOcr(w.text):'';
+    if(!wn){ok=false;break;}
+    // Tolera erro de OCR comparando por prefixo, mas só aceita a direção "palavra do
+    // OCR ficou curta/truncada" quando ela tem tamanho mínimo e cobre boa parte da
+    // palavra-alvo — sem isso, palavras curtas soltas no PDF (tipo "E" de "SOUSA E
+    // SOUSA") acabavam "casando" com qualquer rótulo que começasse com a mesma letra
+    // (ex: "ENCARREGADO"), dando quantidade errada pro cargo errado.
+    var bateDireto=wn.indexOf(alvo[j])===0;
+    var bateTruncado=wn.length>=3&&alvo[j].indexOf(wn)===0&&wn.length>=Math.ceil(alvo[j].length*0.6);
+    if(!bateDireto&&!bateTruncado){ok=false;break;}
+  }
+  if(ok){
+    var p=palavras[i],u=palavras[i+alvo.length-1];
+    achados.push({x0:p.bbox.x0,x1:u.bbox.x1,y0:Math.min(p.bbox.y0,u.bbox.y0),y1:Math.max(p.bbox.y1,u.bbox.y1)});
+    i+=alvo.length-1;
+  }
+}
+return achados;
+}
+
+// Acha o número (QTD) mais próximo à direita, na mesma linha, de um rótulo (cargo ou
+// descrição de equipamento) encontrado no OCR.
+function _acharQtdParaLabel(labelTexto,palavras){
+var ocorrencias=_acharOcorrenciasFrase(labelTexto,palavras);
+if(!ocorrencias.length)return null;
+var bboxLabel=ocorrencias[0];
+var melhor=null,melhorDist=Infinity;
+palavras.forEach(function(w2){
+  var txt=(w2.text||'').trim();
+  if(!/^\d{1,3}$/.test(txt))return;
+  var sobrepoeY=Math.min(w2.bbox.y1,bboxLabel.y1)-Math.max(w2.bbox.y0,bboxLabel.y0);
+  if(sobrepoeY<=0)return;
+  if(w2.bbox.x0<bboxLabel.x1-5)return;
+  var dist=w2.bbox.x0-bboxLabel.x1;
+  if(dist<melhorDist){melhorDist=dist;melhor=w2;}
+});
+return melhor?parseInt(melhor.text,10):null;
+}
+
+function _marcarCampoPorOnchange(trechoSeletor){
+try{
+  var el=document.querySelector('input[onchange*="'+trechoSeletor+'"]');
+  if(el)el.classList.add('ocr-preenchido');
+}catch(e){}
+}
+
+async function _executarOcrDiario(file,statusEl){
+statusEl.textContent='Lendo o PDF (etapa 1/2: abrindo a imagem da página)...';
+var arrayBuffer=await file.arrayBuffer();
+if(!window.pdfjsLib)throw new Error('pdf.js não carregou');
+var pdfDoc=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+var pagina=await pdfDoc.getPage(1);
+var viewport=pagina.getViewport({scale:2.2});
+var canvas=document.createElement('canvas');
+canvas.width=viewport.width;canvas.height=viewport.height;
+var ctx=canvas.getContext('2d');
+await pagina.render({canvasContext:ctx,viewport:viewport}).promise;
+
+statusEl.textContent='Lendo o PDF (etapa 2/2: reconhecendo o texto — pode demorar um pouco)...';
+if(!window.Tesseract)throw new Error('Tesseract não carregou');
+var resultado=await Tesseract.recognize(canvas,'por');
+var dados=(resultado&&resultado.data)||{};
+var palavras=[];
+(dados.words||(dados.lines||[]).reduce(function(acc,l){return acc.concat(l.words||[]);},[])).forEach(function(w){
+  if(w&&w.bbox&&w.text&&w.text.trim())palavras.push(w);
+});
+var textoCompleto=dados.text||'';
+
+_preencherComOcr(textoCompleto,palavras,ctx,statusEl);
+}
+
+function _preencherComOcr(textoCompleto,palavras,ctx,statusEl){
+var resumo=[];
+
+// --- Efetivo ---
+var efetivoPreenchidos=0;
+['admin','producao','terceiros'].forEach(function(grupo){
+  (CONFIG.catalogoEfetivo[grupo]||[]).forEach(function(item){
+    try{
+      var qtd=_acharQtdParaLabel(item.cargo,palavras);
+      if(qtd!==null&&qtd>0){
+        atualizarQtdEfetivo(grupo,item.id,qtd);
+        efetivoPreenchidos++;
+      }
+    }catch(e){}
+  });
+});
+renderEfetivo();
+['admin','producao','terceiros'].forEach(function(grupo){
+  (CONFIG.catalogoEfetivo[grupo]||[]).forEach(function(item){
+    if(rascunho.efetivo[grupo]&&rascunho.efetivo[grupo][item.id]){
+      _marcarCampoPorOnchange("'"+item.id+"'");
+    }
+  });
+});
+resumo.push('👷 Efetivo: '+(efetivoPreenchidos?('preenchi '+efetivoPreenchidos+' função(ões) — confira os campos amarelos'):'não consegui identificar nenhuma quantidade, preenche na mão'));
+
+// --- Equipamentos ---
+var equipPreenchidos=0;
+['proprios','terceiros'].forEach(function(grupo){
+  (CONFIG.catalogoEquip[grupo]||[]).forEach(function(item){
+    try{
+      var qtd=_acharQtdParaLabel(item.descricao,palavras);
+      if(qtd!==null&&qtd>0){
+        atualizarQtdEquip(grupo,item.id,qtd);
+        equipPreenchidos++;
+      }
+    }catch(e){}
+  });
+});
+renderEquip();
+['proprios','terceiros'].forEach(function(grupo){
+  (CONFIG.catalogoEquip[grupo]||[]).forEach(function(item){
+    if(rascunho.equip[grupo]&&rascunho.equip[grupo][item.id]){
+      _marcarCampoPorOnchange("'"+item.id+"'");
+    }
+  });
+});
+resumo.push('🚜 Equipamentos: '+(equipPreenchidos?('preenchi '+equipPreenchidos+' item(ns) — confira os campos amarelos'):'não consegui identificar nenhuma quantidade, preenche na mão'));
+
+// --- Atividades ---
+try{
+  var textoNorm=textoCompleto.replace(/\r/g,'');
+  var ini=textoNorm.search(/REGISTRO\s+DE\s+ATIVIDADES/i);
+  var fim=textoNorm.search(/REGISTRO\s+DE\s+SINISTROS/i);
+  if(ini>=0){
+    var bloco=fim>ini?textoNorm.slice(ini,fim):textoNorm.slice(ini);
+    var linhas=bloco.split('\n').slice(1)
+      .map(function(l){return l.replace(/^\s*\d+[.)]\s*/,'').trim();})
+      .filter(function(l){return l.length>3;});
+    if(linhas.length){
+      rascunho.atividades=linhas;
+      renderAtividades();
+      var listaEl=document.getElementById('lista-atividades');
+      if(listaEl)listaEl.classList.add('ocr-preenchido');
+      resumo.push('📋 Atividades: preenchi '+linhas.length+' linha(s) — confira o texto (destacado) com o PDF ao lado');
+    }else{
+      resumo.push('📋 Atividades: não consegui separar as linhas, preenche na mão olhando o PDF');
+    }
+  }else{
+    resumo.push('📋 Atividades: não encontrei a seção no texto lido, preenche na mão');
+  }
+}catch(e){resumo.push('📋 Atividades: deu erro tentando ler, preenche na mão');}
+
+// --- Sinistros (só detecta se está vazio; não preenche a tabela sozinho) ---
+try{
+  if(/NENHUM\s+SINISTRO/i.test(textoCompleto)){
+    resumo.push('⚠ Sinistros: o PDF indica "Nenhum sinistro registrado" — deixei a lista vazia, só confira.');
+  }else{
+    resumo.push('⚠ Sinistros: NÃO preencho essa tabela sozinho — confira a seção 4 do PDF e cadastre manualmente se houver algum.');
+  }
+}catch(e){}
+
+// --- Comentários ---
+try{
+  var iniC=textoCompleto.search(/COMENT[ÁA]RIOS/i);
+  if(iniC>=0){
+    var blocoC=textoCompleto.slice(iniC).split('\n').slice(1).join(' ').trim();
+    blocoC=blocoC.split(/ASSINATURA|RESPONS[ÁA]VEL/i)[0].trim();
+    if(blocoC&&blocoC!=='—'&&blocoC!=='-'){
+      document.getElementById('nd-comentarios').value=blocoC;
+      rascunho.comentarios=blocoC;
+      document.getElementById('nd-comentarios').classList.add('ocr-preenchido');
+      resumo.push('💬 Comentários: preenchi — confira o texto (destacado)');
+    }
+  }
+}catch(e){}
+
+// --- Responsável (heurística: nome é geralmente a última linha de texto da página) ---
+try{
+  var linhasTodas=textoCompleto.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+  var candidato=linhasTodas.length?linhasTodas[linhasTodas.length-1]:'';
+  if(candidato&&candidato.length>=5&&/[A-Za-zÀ-ú]{3,}/.test(candidato)&&!/^[-—_\s]*$/.test(candidato)){
+    document.getElementById('nd-responsavel').value=candidato;
+    rascunho.responsavel=candidato;
+    document.getElementById('nd-responsavel').classList.add('ocr-preenchido');
+    resumo.push('✎ Responsável: achei "'+candidato+'" no rodapé da página — CONFIRA, é só um palpite (fica perto da assinatura).');
+  }else{
+    resumo.push('✎ Responsável: não consegui identificar, preenche na mão');
+  }
+}catch(e){resumo.push('✎ Responsável: deu erro tentando ler, preenche na mão');}
+
+// --- Clima (manhã/tarde/noite) por análise de caixinha marcada (mais escura = marcada) ---
+try{
+  var opcoesClima=[
+    {valor:'chuvoso_nao_op',frase:'TEMPO CHUVOSO NAO OPERACIONAL'},
+    {valor:'chuvoso_op',frase:'TEMPO CHUVOSO OPERACIONAL'},
+    {valor:'seco',frase:'TEMPO SECO'}
+  ];
+  var porOpcao=opcoesClima.map(function(op){
+    var ocorr=_acharOcorrenciasFrase(op.frase,palavras).sort(function(a,b){return a.x0-b.x0;});
+    return {valor:op.valor,ocorrencias:ocorr};
+  });
+  var periodos=['climaManha','climaTarde','climaNoite'];
+  var nomesRadio={climaManha:'clima-manha',climaTarde:'clima-tarde',climaNoite:'clima-noite'};
+  var climaPreenchido=[];
+  periodos.forEach(function(periodo,idxPeriodo){
+    var candidatos=[];
+    porOpcao.forEach(function(op){
+      var oc=op.ocorrencias[idxPeriodo];
+      if(oc){
+        var escuro=_lerDarknessRegiao(ctx,
+          oc.x0-(oc.y1-oc.y0)*1.3,oc.y0-(oc.y1-oc.y0)*0.1,
+          oc.x0-(oc.y1-oc.y0)*0.18,oc.y1+(oc.y1-oc.y0)*0.1
+        );
+        candidatos.push({valor:op.valor,escuro:escuro});
+      }
+    });
+    if(candidatos.length>=2){
+      candidatos.sort(function(a,b){return a.escuro-b.escuro;});
+      var maisEscuro=candidatos[0],proximo=candidatos[1];
+      if(proximo.escuro-maisEscuro.escuro>=18){
+        var radio=document.querySelector('input[name="'+nomesRadio[periodo]+'"][value="'+maisEscuro.valor+'"]');
+        if(radio){
+          radio.checked=true;
+          rascunho[periodo]=maisEscuro.valor;
+          radio.closest('label').classList.add('ocr-preenchido');
+          climaPreenchido.push(periodo.replace('clima',''));
+        }
+      }
+    }
+  });
+  if(climaPreenchido.length){
+    resumo.push('☁ Clima: tentei marcar ('+climaPreenchido.join(', ')+') — CONFIRA com atenção, é a parte menos confiável da leitura automática.');
+  }else{
+    resumo.push('☁ Clima: não consegui ter certeza de nenhum período — marque manualmente olhando o PDF.');
+  }
+}catch(e){resumo.push('☁ Clima: deu erro tentando ler, marque manualmente.');}
+
+salvarRascunho();
+if(statusEl)statusEl.innerHTML='<b>Leitura automática concluída — confira tudo com o PDF ao lado antes de salvar:</b>\n\n'+resumo.join('\n');
 }
 
 function _salvarDiarioRecuperado(){
