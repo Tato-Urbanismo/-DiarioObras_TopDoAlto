@@ -1766,10 +1766,15 @@ urls.forEach(function(url){
 });
 return p;
 }
+var _libsOcrUltimoErro='';
+var _recuperacaoPdfArquivoAtual=null;
 function _garantirLibsOcr(callback){
-if(_libsOcrProntas){callback();return;}
+if(_libsOcrProntas){callback(true);return;}
 _libsOcrFila.push(callback);
 if(_libsOcrCarregando)return;
+_tentarCarregarLibsOcr(0);
+}
+function _tentarCarregarLibsOcr(tentativa){
 _libsOcrCarregando=true;
 Promise.all([
   _carregarScriptComFallback([
@@ -1789,16 +1794,42 @@ Promise.all([
   _libsOcrProntas=true;
   var fila=_libsOcrFila;_libsOcrFila=[];
   fila.forEach(function(cb){cb(true);});
-}).catch(function(){
+}).catch(function(erro){
+  // Às vezes é só uma falha passageira de rede (CDN lento, VPN/antivírus atrasando o
+  // download na hora) — antes de desistir e avisar o usuário, tenta mais uma vez sozinho.
+  if(tentativa<1){
+    setTimeout(function(){_tentarCarregarLibsOcr(tentativa+1);},1200);
+    return;
+  }
   _libsOcrCarregando=false;
+  _libsOcrUltimoErro=(erro&&erro.message)||String(erro)||'erro desconhecido ao carregar';
   var fila=_libsOcrFila;_libsOcrFila=[];
   fila.forEach(function(cb){cb(false);});
+});
+}
+
+function _botaoTentarOcrDeNovoHtml(){
+return ' <button class="fbtn" onclick="_tentarOcrDeNovo()" style="margin-left:4px">🔄 Tentar de novo</button>';
+}
+function _tentarOcrDeNovo(){
+if(!_recuperacaoPdfArquivoAtual)return;
+var statusEl=document.getElementById('recuperacao-ocr-status');
+statusEl.textContent='Tentando a leitura automática de novo...';
+_garantirLibsOcr(function(libsOk){
+  if(!libsOk){
+    statusEl.innerHTML='Não consegui de novo ('+(_libsOcrUltimoErro||'sem internet')+'). Sem problema — o PDF está aí do lado, preenche olhando ele.'+_botaoTentarOcrDeNovoHtml();
+    return;
+  }
+  _executarOcrDiario(_recuperacaoPdfArquivoAtual,statusEl).catch(function(err){
+    statusEl.innerHTML='Não consegui ler o PDF automaticamente ('+((err&&err.message)||err)+'). Preenche olhando o PDF ao lado mesmo.'+_botaoTentarOcrDeNovoHtml();
+  });
 });
 }
 
 function _iniciarPreviewEOcrPdf(file){
 document.body.classList.add('tem-pdf-recuperacao');
 document.getElementById('recuperacao-pdf-painel').classList.remove('minimizado');
+_recuperacaoPdfArquivoAtual=file;
 var statusEl=document.getElementById('recuperacao-ocr-status');
 statusEl.textContent='Carregando o PDF...';
 if(_recuperacaoPdfBlobUrl)URL.revokeObjectURL(_recuperacaoPdfBlobUrl);
@@ -1808,11 +1839,11 @@ document.getElementById('recuperacao-pdf-iframe').src=_recuperacaoPdfBlobUrl;
 statusEl.textContent='Carregando leitura automática (pode levar alguns segundos, precisa de internet)...';
 _garantirLibsOcr(function(libsOk){
   if(!libsOk){
-    statusEl.textContent='Não consegui carregar a leitura automática agora (precisa de internet). Sem problema — o PDF está aí do lado, preenche olhando ele.';
+    statusEl.innerHTML='Não consegui carregar a leitura automática agora ('+(_libsOcrUltimoErro||'sem internet')+'). Sem problema — o PDF está aí do lado, preenche olhando ele.'+_botaoTentarOcrDeNovoHtml();
     return;
   }
   _executarOcrDiario(file,statusEl).catch(function(err){
-    statusEl.textContent='Não consegui ler o PDF automaticamente ('+((err&&err.message)||err)+'). Preenche olhando o PDF ao lado mesmo.';
+    statusEl.innerHTML='Não consegui ler o PDF automaticamente ('+((err&&err.message)||err)+'). Preenche olhando o PDF ao lado mesmo.'+_botaoTentarOcrDeNovoHtml();
   });
 });
 }
