@@ -592,6 +592,28 @@ _tentarSincronizarPendentes().then(function(resultados){
     var motivosUnicos=motivos.filter(function(m,i){return motivos.indexOf(m)===i;});
     alert('Sincronizado '+sucesso+' de '+resultados.length+' item(ns). '+falhados.length+' ainda não conseguiu(ram) conectar:\n\n'+motivosUnicos.join('\n')+'\n\nTenta de novo em alguns segundos. Se continuar, me manda esse texto.');
   }
+  // Além de regravar os diários pendentes, aproveita o clique em "Sincronizar" pra
+  // abrir a telinha de escolher a conta do Google — garante que o Drive está
+  // conectado com a conta certa (útil em computador compartilhado entre contas).
+  _escolherContaGoogleDrive();
+});
+}
+// Abre a tela de escolha de conta do Google (a mesma que aparece quando autoriza o
+// Drive pela primeira vez), sem disparar nenhum envio de PDF depois — é só pra
+// confirmar/trocar qual conta está conectada. Se o Drive ainda não tiver sido
+// configurado no app, não faz nada (sem alerta, já que isso roda sozinho junto do
+// Sincronizar, não foi um clique direto nisso).
+function _escolherContaGoogleDrive(){
+if(typeof GOOGLE_CLIENT_ID==='undefined'||GOOGLE_CLIENT_ID.indexOf('SEU_CLIENT_ID')===0)return;
+_garantirLibGoogle(function(){
+  if(!_tokenClientDrive){return;}
+  _pendingAuthCallback=function(){
+    alert('Conta do Google Drive selecionada com sucesso.');
+  };
+  _pendingAuthErro=function(msg){
+    alert('Não consegui conectar com o Google Drive: '+msg);
+  };
+  _tokenClientDrive.requestAccessToken({prompt:'select_account'});
 });
 }
 // Cada diário vive no seu PRÓPRIO documento (coleção "diarios_itens", um documento por
