@@ -45,6 +45,8 @@ body.modo-edicao #btn-modo-edicao{background:var(--gold);color:#fff;border-color
 #btn-sincronizar:disabled{opacity:.6;cursor:default}
 #banner-edicao{display:none;background:#fff3cd;border:1px solid #c9962c;color:#5c4600;padding:8px 12px;font-size:11.5px;margin-bottom:10px;border-radius:3px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 body.modo-edicao #banner-edicao{display:flex}
+#banner-recuperacao{display:none;background:#ffe3e3;border:1px solid #c0392b;color:#6b1c1c;padding:8px 12px;font-size:11.5px;margin-bottom:10px;border-radius:3px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+body.modo-recuperacao #banner-recuperacao{display:flex}
 .regua{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #c9962c;border-radius:4px;padding:4px 10px}
 .regua button{background:var(--ink);color:#fff;border:none;border-radius:3px;width:26px;height:26px;font-size:15px;font-weight:700;cursor:pointer;line-height:1}
 .regua span{font-size:11px;font-weight:700;min-width:38px;text-align:center}
@@ -145,6 +147,10 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 </div>
 <button class="btn btn-add" style="flex-shrink:0" onclick="alternarModoEdicao()">💾 Salvar Alterações</button>
 </div>
+<div id="banner-recuperacao">
+<span>🔧 <b>Modo Recuperação</b> — preenchendo o diário de <b id="banner-recuperacao-data"></b> pra salvar direto no banco de dados (sem subir PDF pro Drive de novo).</span>
+<button class="btn btn-cancel" onclick="cancelarRecuperacaoDiario()">✕ Cancelar Recuperação</button>
+</div>
 
 <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #2d7a40;padding:6px 0 16px;margin-bottom:18px">
 <img src="" style="height:80px" id="cabecalho-logo-top">
@@ -239,9 +245,10 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 </div>
 
 <div style="display:flex;gap:10px;margin:20px 0 6px;justify-content:flex-end" class="no-print">
-<button class="btn btn-cancel" onclick="visualizarDiarioAtual()">👁 Visualizar / Imprimir</button>
-<button class="btn btn-add" style="padding:11px 26px;font-size:12px" onclick="salvarDiario()">💾 Salvar Diário do Dia</button>
-<button class="btn" style="padding:11px 26px;font-size:12px;background:#767676" onclick="salvarDiarioSemDrive()" title="Salva o diário sem gerar/enviar o PDF pro Drive — use enquanto ainda não tiver as fotos">💾 Salvar sem Drive (temporário)</button>
+<button class="btn btn-cancel" id="btn-visualizar-imprimir" onclick="visualizarDiarioAtual()">👁 Visualizar / Imprimir</button>
+<button class="btn btn-add" id="btn-salvar-diario-dia" style="padding:11px 26px;font-size:12px" onclick="salvarDiario()">💾 Salvar Diário do Dia</button>
+<button class="btn" id="btn-salvar-sem-drive" style="padding:11px 26px;font-size:12px;background:#767676" onclick="salvarDiarioSemDrive()" title="Salva o diário sem gerar/enviar o PDF pro Drive — use enquanto ainda não tiver as fotos">💾 Salvar sem Drive (temporário)</button>
+<button class="btn btn-add" id="btn-salvar-recuperado" style="padding:11px 26px;font-size:12px;background:#c0392b;display:none" onclick="_salvarDiarioRecuperado()">🔧 Salvar Diário Recuperado (sem Drive)</button>
 </div>
 </div>
 
@@ -334,7 +341,16 @@ tr.arrasto-alvo{box-shadow:inset 0 2px 0 var(--gold)}
 
 
 <div class="panel" id="panel-ferramentas">
-<div class="sbar" style="margin-top:0">📷 Importar Fotos da Planilha</div>
+<div class="sbar" style="margin-top:0">🔧 Recuperar Diário Perdido</div>
+<div class="folha">
+<p style="font-size:11px;color:var(--muted);margin-bottom:10px">Se um diário sumiu do <b>Histórico</b> mas o PDF dele já está no Google Drive (ex: apareceu "sucesso" mas o diário nunca ficou salvo), use esta ferramenta. Ela abre o formulário na data escolhida pra você preencher de novo olhando o PDF do Drive — com direito a anexar as fotos originais do computador/celular — e salva direto no banco de dados, sem subir PDF de novo.</p>
+<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+<div><label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">Data do diário que sumiu</label><input type="date" id="ferr-recuperar-data" style="border:1px solid #999;border-radius:3px;padding:7px 9px;font-family:Arial,sans-serif;font-size:12px"></div>
+<button class="btn btn-add" style="background:#c0392b" onclick="abrirFerramentaRecuperarDiario()">🔧 Abrir para Recuperação</button>
+</div>
+</div>
+
+<div class="sbar">📷 Importar Fotos da Planilha</div>
 <div class="folha">
 <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Selecione a pasta <b>xl\media</b> (com todas as fotos originais da planilha). O sistema identifica a data de cada foto automaticamente e anexa ao diário correspondente — as fotos já importadas não são duplicadas, então pode rodar de novo quantas vezes precisar.</p>
 <input type="file" id="ferr-import-input" webkitdirectory directory multiple accept="image/*" style="display:none" onchange="_ferrAtualizarLabelImport()">
@@ -1628,6 +1644,103 @@ alert('Diário nº '+rascunho.numero+' salvo com sucesso (sem enviar pro Drive).
 _voltarParaNovoDiario();
 });
 }
+
+// ===== Recuperar Diário Perdido =====
+// Ferramenta pra quando um diário sumiu do Histórico (o PDF subiu pro Drive mas o diário
+// nunca foi gravado no banco). Reaproveita o formulário normal do "Diário de Hoje": troca
+// temporariamente o "rascunho" global pela data escolhida, deixa preencher tudo de novo
+// (inclusive anexar fotos originais do computador), e salva direto no banco — sem subir
+// PDF pro Drive de novo, já que ele provavelmente já existe lá. Guarda o rascunho de hoje
+// antes de mexer, e devolve ele no lugar quando sair do modo recuperação (cancelando ou
+// depois de salvar), pra não perder o que já estava sendo digitado.
+var _modoRecuperacao=false;
+var _rascunhoAntesRecuperacao=null;
+
+function abrirFerramentaRecuperarDiario(){
+var dataAlvo=document.getElementById('ferr-recuperar-data').value;
+if(!dataAlvo){alert('Escolha a data do diário que sumiu do Histórico.');return;}
+var existente=DIARIOS.find(function(d){return d.data===dataAlvo;});
+if(existente){
+  if(!confirm('Já existe um diário salvo para '+fmtData(dataAlvo)+' (nº '+existente.numero+').\n\nAbrir esse diário pra edição/correção em vez de criar um novo?')){
+    return;
+  }
+}
+if(!_modoRecuperacao){
+  _rascunhoAntesRecuperacao=JSON.parse(JSON.stringify(rascunho));
+}
+_modoRecuperacao=true;
+if(existente){
+  rascunho=JSON.parse(JSON.stringify(existente));
+}else{
+  rascunho=criarRascunhoVazio();
+  rascunho.data=dataAlvo;
+  rascunho.numero=calcularDias(dataAlvo).numero;
+}
+document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+document.getElementById('panel-novo').classList.add('on');
+document.querySelectorAll('nav button').forEach(function(b){b.classList.remove('on');});
+var btnNav=document.querySelector('nav button[onclick*="\'novo\'"]');
+if(btnNav)btnNav.classList.add('on');
+document.getElementById('content-visualizar').style.display='none';
+document.getElementById('content-historico').style.display='block';
+preencherFormRascunho();
+document.body.classList.add('modo-recuperacao');
+document.getElementById('banner-recuperacao-data').textContent=fmtData(rascunho.data)+' (nº '+rascunho.numero+')';
+document.getElementById('btn-visualizar-imprimir').style.display='none';
+document.getElementById('btn-salvar-diario-dia').style.display='none';
+document.getElementById('btn-salvar-sem-drive').style.display='none';
+document.getElementById('btn-salvar-recuperado').style.display='inline-flex';
+window.scrollTo(0,0);
+}
+
+function cancelarRecuperacaoDiario(){
+if(!confirm('Cancelar a recuperação? O que foi digitado aqui agora não vai ser salvo.'))return;
+_sairDoModoRecuperacao();
+}
+
+function _sairDoModoRecuperacao(){
+_modoRecuperacao=false;
+rascunho=_rascunhoAntesRecuperacao||criarRascunhoVazio();
+_rascunhoAntesRecuperacao=null;
+document.body.classList.remove('modo-recuperacao');
+document.getElementById('btn-visualizar-imprimir').style.display='';
+document.getElementById('btn-salvar-diario-dia').style.display='';
+document.getElementById('btn-salvar-sem-drive').style.display='';
+document.getElementById('btn-salvar-recuperado').style.display='none';
+preencherFormRascunho();
+atualizarCalculosData(true);
+}
+
+function _salvarDiarioRecuperado(){
+_salvandoAgora=true;
+rascunho.numero=calcularDias(rascunho.data).numero;
+var idx=DIARIOS.findIndex(function(d){return d.id===rascunho.id;});
+if(idx>=0){
+  DIARIOS[idx]=JSON.parse(JSON.stringify(rascunho));
+}else{
+  if(!rascunho.id)rascunho.id=gerarId();
+  DIARIOS.push(JSON.parse(JSON.stringify(rascunho)));
+}
+var diarioParaSalvar=idx>=0?DIARIOS[idx]:DIARIOS[DIARIOS.length-1];
+var salvarInd=document.getElementById('save-ind');
+if(salvarInd){salvarInd.textContent='salvando...';salvarInd.style.color='var(--gold)';}
+salvar();
+_salvarUmDiario(diarioParaSalvar).then(function(status){
+if(!status.ok){
+  _salvandoAgora=false;
+  if(salvarInd){salvarInd.textContent='FALHOU AO SALVAR';salvarInd.style.color='var(--red)';}
+  alert('ATENÇÃO: o diário nº '+diarioParaSalvar.numero+' NÃO foi salvo no banco agora (sem internet ou alguma proteção travando). Os dados continuam preenchidos aqui — tenta clicar em "Salvar Diário Recuperado" de novo em alguns segundos, sem fechar essa aba.');
+  return;
+}
+_salvandoAgora=false;
+if(salvarInd){salvarInd.textContent='sincronizado';salvarInd.style.color='var(--green2)';}
+alert('Diário nº '+diarioParaSalvar.numero+' ('+fmtData(diarioParaSalvar.data)+') recuperado e salvo no banco com sucesso!\n\nEsse diário NÃO foi enviado pro Drive agora — se precisar do PDF de novo, use Ferramentas > Enviar Diários para o Google Drive.');
+_sairDoModoRecuperacao();
+var btnHist=document.querySelector('nav button[onclick*="\'historico\'"]');
+if(btnHist)mudarAba('historico',btnHist);
+});
+}
+
 function _salvarPdfDriveAutomatico(onSucesso,onErro){
 _garantirLibsPdf(function(){
 _garantirLibGoogle(function(){
